@@ -33,21 +33,26 @@ import qualified Data.Text.Lazy.Builder as TB (toLazyText)
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 
 main :: IO ()
-main = getOutputDir >>= createBooks
+main = getProgramArgs >>= createBooks
 
-getOutputDir :: IO FilePath
-getOutputDir = do
+-- | The program's arguments.
+newtype Args = Args
+  { arOutputDir :: FilePath
+  }
+
+getProgramArgs :: IO Args
+getProgramArgs = do
   args <- getArgs
   case args of
-    [dir] -> do
-      exists <- doesDirectoryExist dir
-      unless exists $ createDirectory dir
-      pure dir
+    [arOutputDir] -> do
+      exists <- doesDirectoryExist arOutputDir
+      unless exists $ createDirectory arOutputDir
+      pure $ Args { arOutputDir }
     _ -> die "The program requires one argument with the name of the output directory for EPUBs"
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
-createBooks :: FilePath -> IO ()
-createBooks outputDir = do
+createBooks :: Args -> IO ()
+createBooks Args { arOutputDir = outputDir } = do
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
