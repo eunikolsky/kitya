@@ -83,7 +83,10 @@ createBooks Args { arOutputDir = outputDir } = do
       in for_ postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML file next
 
-forEachYearMonth :: ((String, String) -> IO ()) -> IO ()
+type Year = String
+type Month = String
+
+forEachYearMonth :: ((Year, Month) -> IO ()) -> IO ()
 forEachYearMonth f =
   withWriteableFilePreservingModTime "." $
 
