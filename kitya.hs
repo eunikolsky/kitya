@@ -150,14 +150,24 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
     args =
       [ "index.html"
       , outputDir </> "kitya_" <> yearMonth <.> "epub"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#html-input-options
       , "--breadth-first"
       , "--max-levels", "1"
       , "--allow-local-files-outside-root"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#epub-output-options
+      , "--flow-size", "0"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#structure-detection
       , "--chapter", "/"
       , "--page-breaks-before", "/"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#table-of-contents
       , "--level1-toc", "//h:h1"
       , "--level2-toc", "//h:h2"
-      , "--flow-size", "0"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#metadata
       , "--authors", "Китя Карлсон"
       , "--book-producer", "egeek"
       , "--language", "Russian"
