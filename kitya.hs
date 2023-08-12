@@ -251,7 +251,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , downgradeCommentsHeader
       , treeizeComments nextFile
       , removeBodyInComments
-      , editStyles
+      , cleanupBoxModelStyles
       , removeLinksToImages
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
@@ -317,8 +317,9 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
           , "date { display: inline; /* for koreader */ }"
           ]
 
-editStyles :: ArrowXml a => a XmlTree XmlTree
-editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText remove)
+-- margin, padding, border
+cleanupBoxModelStyles :: ArrowXml a => a XmlTree XmlTree
+cleanupBoxModelStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText remove)
   where
     -- margin-left
     removeCommentsStyles = filter ((/= ".comments") . selector)
