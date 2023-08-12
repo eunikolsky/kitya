@@ -158,8 +158,6 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
 
       -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#epub-output-options
       , "--flow-size", "0"
-      , "--epub-inline-toc"
-      , "--toc-title", "Содержание"
       , "--preserve-cover-aspect-ratio"
 
       -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#structure-detection
