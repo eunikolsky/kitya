@@ -314,6 +314,7 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
           [ ".comment { margin-left: 0.5em; }"
           , "#comm > .comment { margin-left: 0; }"
           , ".next_post_link { font-weight: bold; float: right; color: red; }"
+          , "date { display: inline; /* for koreader */ }"
           ]
 
 editStyles :: ArrowXml a => a XmlTree XmlTree
