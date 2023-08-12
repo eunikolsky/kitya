@@ -255,7 +255,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       -- wraps tagless text in `body` tags with a `div`, and we don't need extra
       -- `div`s in comments
       , wrapDate
-      , cleanupBoxModelStyles
+      , editStyles
       , removeLinksToImages
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
@@ -318,13 +318,13 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
           [ ".comment { margin-left: 0.5em; }"
           , "#comm > .comment { margin-left: 0; }"
           , ".next_post_link { font-weight: bold; float: right; color: red; }"
-          , "date { display: inline; /* for koreader */ }"
           ]
 
--- margin, padding, border
-cleanupBoxModelStyles :: ArrowXml a => a XmlTree XmlTree
-cleanupBoxModelStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText remove)
+editStyles :: ArrowXml a => a XmlTree XmlTree
+editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText $ append . remove)
   where
+    append = (<> "date { display: inline; /* for koreader */ }\n")
+
     -- margin-left
     removeCommentsStyles = filter ((/= ".comments") . selector)
     leaveOnlyBorderBottomStyleForBody = map (\block ->
