@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack script --optimize --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process -- -hide-all-packages
+-- stack script --optimize --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process --ghc-options=-hide-all-packages
 
 -- note: the `--package` argument above doesn't work when loading the script into `stack ghci`; pass
 -- them manually, each after its own `--package` argument
@@ -33,28 +33,40 @@ import qualified Data.Text.Lazy.Builder as TB (toLazyText)
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 
 main :: IO ()
-main = getOutputDir >>= createBooks
+main = getProgramArgs >>= createBooks
 
-getOutputDir :: IO FilePath
-getOutputDir = do
+-- | The program's arguments.
+data Args = Args
+  { arOutputDir :: !FilePath
+  , arInputDate :: !(Maybe (Year, Month))
+  }
+
+getProgramArgs :: IO Args
+getProgramArgs = do
   args <- getArgs
   case args of
-    [dir] -> do
-      exists <- doesDirectoryExist dir
-      unless exists $ createDirectory dir
-      pure dir
-    _ -> die "The program requires one argument with the name of the output directory for EPUBs"
+    ["-i", year, month, arOutputDir] -> do
+      exists <- doesDirectoryExist arOutputDir
+      unless exists $ createDirectory arOutputDir
+      pure $ Args { arOutputDir, arInputDate = Just (year, month) }
+
+    [arOutputDir] -> do
+      exists <- doesDirectoryExist arOutputDir
+      unless exists $ createDirectory arOutputDir
+      pure $ Args { arOutputDir, arInputDate = Nothing }
+
+    _ -> die "Usage: kitya [-i <YEAR> <MONTH>] <OUTPUT_DIR>"
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
-createBooks :: FilePath -> IO ()
-createBooks outputDir = do
+createBooks :: Args -> IO ()
+createBooks Args { arOutputDir = outputDir, arInputDate } = do
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forEachYearMonth $ \(year, month) -> do
+  forYearMonth arInputDate $ \(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
@@ -73,12 +85,20 @@ createBooks outputDir = do
     modifyIORef' bookNumberRef (+ 1)
 
   where
+    -- picks between the requested year-month or all the discovered ones
+    forYearMonth Nothing = forEachYearMonth
+    forYearMonth (Just ym) = forGivenYearMonth ym
+
     amendHTMLs posts =
       let postPairs = adjacentPairs posts
       in for_ postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML file next
 
-forEachYearMonth :: ((String, String) -> IO ()) -> IO ()
+type Year = String
+type Month = String
+type YearMonthFunc = (Year, Month) -> IO ()
+
+forEachYearMonth :: YearMonthFunc -> IO ()
 forEachYearMonth f =
   withWriteableFilePreservingModTime "." $
 
@@ -97,6 +117,21 @@ forEachYearMonth f =
     listNumericDirs = fmap (sortOn $ read @Int) . filterM doesDirectoryExist =<< filter (all isDigit) <$> listDirectory "."
     forEachYear = forEachNumericDir
     forEachMonth = forEachNumericDir
+
+-- this is a simplified copy of `forEachYearMonth` that looks at only one
+-- year-month; I'm not sure how to combine these two w/o introducing unnecessary
+-- filesystem operations when we need only one year-month
+forGivenYearMonth :: (Year, Month) -> YearMonthFunc -> IO ()
+forGivenYearMonth (year, month) f =
+  withWriteableFilePreservingModTime "." $
+
+  withWriteableFilePreservingModTime year $
+  withCurrentDirectory year $
+
+  withWriteableFilePreservingModTime month $
+  withBackedupCurrentDirectory month $
+
+    f (year, month)
 
 data EpubSettings = EpubSettings
   { yearMonth :: !String -- ^ Year and month from the filesystem, e.g. `2004-01`.
