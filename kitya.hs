@@ -285,7 +285,7 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
       where
         name = maybe "span" (const "a") src
         attrs = maybe [] (singleton . sattr "href") src
-        text = maybe "|||" (const ">>>") src
+        text = maybe "|||||" (const ">>>>>") src
     -- note: the parenthesis around the expression before `>>.` are extremely important! the code will
     -- run without them, but it won't do what's needed: here it groups all the modified `div`s into a
     -- list and passes it to `treeize`; w/o the parenthesis, `treeize` would be called multiple times
