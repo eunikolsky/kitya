@@ -313,7 +313,7 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
         appendCommentStyles = flip (<>) . unlines $
           [ ".comment { margin-left: 0.5em; }"
           , "#comm > .comment { margin-left: 0; }"
-          , ".next_post_link { font-weight: bold; float: right; }"
+          , ".next_post_link { font-weight: bold; float: right; color: red; }"
           ]
 
 editStyles :: ArrowXml a => a XmlTree XmlTree
