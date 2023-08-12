@@ -320,15 +320,22 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
 editStyles :: ArrowXml a => a XmlTree XmlTree
 editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText remove)
   where
+    -- margin-left
+    removeCommentsStyles = filter ((/= ".comments") . selector)
+    leaveOnlyBorderBottomStyleForBody = map (\block ->
+        (if selector block == ".body"
+          then second (filter $ (== "border-bottom") . attrName)
+          else id)
+        block)
+
+    selector = fst
+    attrName = fst
+
     remove = TL.unpack
       . TB.toLazyText
       . renderBlocks
-      . map (\block ->
-          (if fst block == ".body"
-            then second (filter $ (== "border-bottom") . fst)
-            else id)
-          block)
-      . filter ((/= ".comments") . fst)
+      . leaveOnlyBorderBottomStyleForBody
+      . removeCommentsStyles
       . fromRight []
       . parseBlocks
       . T.pack
