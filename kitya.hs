@@ -1,5 +1,7 @@
 #!/usr/bin/env stack
--- stack script --optimize --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process --ghc-options=-hide-all-packages
+-- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process --ghc-options=-hide-all-packages
+
+-- note: add this later before running for real: --optimize
 
 -- note: the `--package` argument above doesn't work when loading the script into `stack ghci`; pass
 -- them manually, each after its own `--package` argument
