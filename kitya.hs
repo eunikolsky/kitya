@@ -318,9 +318,8 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
           ]
 
 editStyles :: ArrowXml a => a XmlTree XmlTree
-editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText $ append . remove)
+editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText remove)
   where
-    append = (<> "div.body img { max-width: 80%; width: auto; height: auto; }\n")
     remove = TL.unpack
       . TB.toLazyText
       . renderBlocks
