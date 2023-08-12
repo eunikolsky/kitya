@@ -152,6 +152,7 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
       , outputDir </> "kitya_" <> yearMonth <.> "epub"
       , "--breadth-first"
       , "--max-levels", "1"
+      , "--allow-local-files-outside-root"
       , "--chapter", "/"
       , "--page-breaks-before", "/"
       , "--level1-toc", "//h:h1"
