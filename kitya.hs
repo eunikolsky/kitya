@@ -246,11 +246,14 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
     process = seqA
       [ movePostHeaderBeforeDate
       , removeMenu
-      , wrapDate
       , removePreCommentsTable
       , downgradeCommentsHeader
       , treeizeComments nextFile
       , removeBodyInComments
+      -- warning: `wrapDate` has to be after `removeBodyInComments` because it
+      -- wraps tagless text in `body` tags with a `div`, and we don't need extra
+      -- `div`s in comments
+      , wrapDate
       , cleanupBoxModelStyles
       , removeLinksToImages
       ]
