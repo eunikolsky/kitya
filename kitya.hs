@@ -36,30 +36,37 @@ main :: IO ()
 main = getProgramArgs >>= createBooks
 
 -- | The program's arguments.
-newtype Args = Args
-  { arOutputDir :: FilePath
+data Args = Args
+  { arOutputDir :: !FilePath
+  , arInputDate :: !(Maybe (Year, Month))
   }
 
 getProgramArgs :: IO Args
 getProgramArgs = do
   args <- getArgs
   case args of
+    ["-i", year, month, arOutputDir] -> do
+      exists <- doesDirectoryExist arOutputDir
+      unless exists $ createDirectory arOutputDir
+      pure $ Args { arOutputDir, arInputDate = Just (year, month) }
+
     [arOutputDir] -> do
       exists <- doesDirectoryExist arOutputDir
       unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir }
-    _ -> die "The program requires one argument with the name of the output directory for EPUBs"
+      pure $ Args { arOutputDir, arInputDate = Nothing }
+
+    _ -> die "Usage: kitya [-i <YEAR> <MONTH>] <OUTPUT_DIR>"
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir = outputDir } = do
+createBooks Args { arOutputDir = outputDir, arInputDate } = do
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forEachYearMonth $ \(year, month) -> do
+  forYearMonth arInputDate $ \(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
@@ -78,6 +85,10 @@ createBooks Args { arOutputDir = outputDir } = do
     modifyIORef' bookNumberRef (+ 1)
 
   where
+    -- picks between the requested year-month or all the discovered ones
+    forYearMonth Nothing = forEachYearMonth
+    forYearMonth (Just ym) = forGivenYearMonth ym
+
     amendHTMLs posts =
       let postPairs = adjacentPairs posts
       in for_ postPairs $
@@ -85,8 +96,9 @@ createBooks Args { arOutputDir = outputDir } = do
 
 type Year = String
 type Month = String
+type YearMonthFunc = (Year, Month) -> IO ()
 
-forEachYearMonth :: ((Year, Month) -> IO ()) -> IO ()
+forEachYearMonth :: YearMonthFunc -> IO ()
 forEachYearMonth f =
   withWriteableFilePreservingModTime "." $
 
@@ -105,6 +117,21 @@ forEachYearMonth f =
     listNumericDirs = fmap (sortOn $ read @Int) . filterM doesDirectoryExist =<< filter (all isDigit) <$> listDirectory "."
     forEachYear = forEachNumericDir
     forEachMonth = forEachNumericDir
+
+-- this is a simplified copy of `forEachYearMonth` that looks at only one
+-- year-month; I'm not sure how to combine these two w/o introducing unnecessary
+-- filesystem operations when we need only one year-month
+forGivenYearMonth :: (Year, Month) -> YearMonthFunc -> IO ()
+forGivenYearMonth (year, month) f =
+  withWriteableFilePreservingModTime "." $
+
+  withWriteableFilePreservingModTime year $
+  withCurrentDirectory year $
+
+  withWriteableFilePreservingModTime month $
+  withBackedupCurrentDirectory month $
+
+    f (year, month)
 
 data EpubSettings = EpubSettings
   { yearMonth :: !String -- ^ Year and month from the filesystem, e.g. `2004-01`.
