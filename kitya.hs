@@ -17,7 +17,7 @@ import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (intercalate, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
+import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -251,6 +251,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , removeMenu
       , removePreCommentsTable
       , downgradeCommentsHeader
+      , fixHTMLNewlinesInComments
       , treeizeComments nextFile
       , removeBodyInComments
       -- warning: `wrapDate` has to be after `removeBodyInComments` because it
@@ -364,6 +365,25 @@ removeLinksToImages = processTopDown $
     imageSourceFromLink = mkAttr (mkName "src") (getAttrValue0 "href" >>> mkText)
     imageLink = hasName "a" /> hasName "img"
 
+-- | Inserts `<br/>` before every `\n` in a comment text, otherwise all comments
+-- are displayed w/o any intended line breaks. Note: livejournal's comments do
+-- have newlines and `<br/>` tags in comments, but Kitya's lj replicator lost
+-- the breaks.
+fixHTMLNewlinesInComments :: ArrowXml a => a XmlTree XmlTree
+fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` commentBody
+  where
+    mapNode = (getText >>. insertBreaks) `when` isText
+
+    insertBreaks :: [String] -> [XmlTree]
+    insertBreaks [s] = intersperse br $ XN.mkText <$> splitBeforeNewlines s
+    insertBreaks xs = error $ "Expected to have single text node, but got " <> show xs
+
+    -- `splitBeforeNewlines "foo\n\nbar\nbaz" = ["foo", "\n", "\nbar", "\nbaz"]`
+    splitBeforeNewlines :: String -> [String]
+    splitBeforeNewlines = split $ keepDelimsL (whenElt (== '\n'))
+
+    commentBody = hasAttrValue "class" (== "comment_body")
+    br = XN.mkElement (mkName "br") [] []
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;

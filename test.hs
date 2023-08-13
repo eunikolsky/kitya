@@ -67,3 +67,122 @@ spec = do
         >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
 
       actual `shouldBe` expected
+
+  describe "fixHTMLNewlinesInComments" $ do
+    let fixHTMLNewlinesInComments' html =
+          fmap head . runX $ readString [withParseHTML yes] html
+            >>> fixHTMLNewlinesInComments
+            >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
+    it "leaves text comments w/o newlines as is" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">второй</div>
+        </div>
+      |]
+
+      let expected = html
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
+    it "prepends <br/> to newlines in text comments" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo
+
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">
+            второй
+              комментарий
+            </div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo<br/>
+        <br/>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body"><br/>
+            второй<br/>
+              комментарий<br/>
+            </div>
+        </div>
+      |]
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
+    it "leaves other tags as is" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo <a href="example.org">bar</a> </div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">foo<b></b></div>
+        </div>
+      |]
+
+      let expected = html
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
+    it "prepends <br/> to newlines in text in other tags" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo
+          <a href="example.org">multi
+          line</a>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">
+            <li>foo
+              <b>bo
+                ld</b></li> bar
+          </div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo<br/>
+          <a href="example.org">multi<br/>
+          line</a><br/>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body"><br/>
+            <li>foo<br/>
+              <b>bo<br/>
+                ld</b></li> bar<br/>
+          </div>
+        </div>
+      |]
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
+mkComments :: T.Text -> String
+mkComments commentsText = T.unpack [trimming|
+  <html>
+  <body>body
+    <div id="comm" class="comments">
+      $commentsText
+    </div>
+  </body>
+  </html>
+|]
