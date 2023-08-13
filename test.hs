@@ -70,19 +70,13 @@ spec = do
 
   describe "fixHTMLNewlinesInComments" $ do
     it "leaves text comments w/o newlines as is" $ do
-      let html = T.unpack [trimming|
-        <html>
-        <body>body
-          <div id="comm" class="comments">
-            <div class="comment">
-              <div class="comment_body">foo bar</div>
-            </div>
-            <div class="comment">
-              <div class="comment_body">второй</div>
-            </div>
-          </div>
-        </body>
-        </html>
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">второй</div>
+        </div>
       |]
 
       let expected = html
@@ -94,44 +88,32 @@ spec = do
       actual `shouldBe` expected
 
     it "prepends <br/> to newlines in text comments" $ do
-      let html = T.unpack [trimming|
-        <html>
-        <body>body
-          <div id="comm" class="comments">
-            <div class="comment">
-              <div class="comment_body">foo
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo
 
-              bar</div>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">
+            второй
+              комментарий
             </div>
-            <div class="comment">
-              <div class="comment_body">
-                второй
-                комментарий
-                </div>
-            </div>
-          </div>
-        </body>
-        </html>
+        </div>
       |]
 
-      let expected = T.unpack [trimming|
-        <html>
-        <body>body
-          <div id="comm" class="comments">
-            <div class="comment">
-              <div class="comment_body">foo<br/>
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo<br/>
         <br/>
-              bar</div>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body"><br/>
+            второй<br/>
+              комментарий<br/>
             </div>
-            <div class="comment">
-              <div class="comment_body"><br/>
-                второй<br/>
-                комментарий<br/>
-                </div>
-            </div>
-          </div>
-        </body>
-        </html>
+        </div>
       |]
 
       actual <- fmap head . runX $ readString [withParseHTML yes] html
@@ -139,3 +121,14 @@ spec = do
         >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
 
       actual `shouldBe` expected
+
+mkComments :: T.Text -> String
+mkComments commentsText = T.unpack [trimming|
+  <html>
+  <body>body
+    <div id="comm" class="comments">
+      $commentsText
+    </div>
+  </body>
+  </html>
+|]
