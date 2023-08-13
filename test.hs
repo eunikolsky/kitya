@@ -69,6 +69,11 @@ spec = do
       actual `shouldBe` expected
 
   describe "fixHTMLNewlinesInComments" $ do
+    let fixHTMLNewlinesInComments' html =
+          fmap head . runX $ readString [withParseHTML yes] html
+            >>> fixHTMLNewlinesInComments
+            >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
     it "leaves text comments w/o newlines as is" $ do
       let html = mkComments [trimming|
         <div class="comment">
@@ -81,9 +86,7 @@ spec = do
 
       let expected = html
 
-      actual <- fmap head . runX $ readString [withParseHTML yes] html
-        >>> fixHTMLNewlinesInComments
-        >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+      actual <- fixHTMLNewlinesInComments' html
 
       actual `shouldBe` expected
 
@@ -116,9 +119,7 @@ spec = do
         </div>
       |]
 
-      actual <- fmap head . runX $ readString [withParseHTML yes] html
-        >>> fixHTMLNewlinesInComments
-        >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+      actual <- fixHTMLNewlinesInComments' html
 
       actual `shouldBe` expected
 
