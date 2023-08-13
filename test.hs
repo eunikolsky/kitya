@@ -123,6 +123,22 @@ spec = do
 
       actual `shouldBe` expected
 
+    it "leaves other tags as is" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo <a href="example.org">bar</a> </div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">foo<b></b></div>
+        </div>
+      |]
+
+      let expected = html
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
 mkComments :: T.Text -> String
 mkComments commentsText = T.unpack [trimming|
   <html>
