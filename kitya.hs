@@ -17,7 +17,7 @@ import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (intercalate, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
+import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -370,7 +370,20 @@ removeLinksToImages = processTopDown $
 -- have newlines and `<br/>` tags in comments, but Kitya's lj replicator lost
 -- the breaks.
 fixHTMLNewlinesInComments :: ArrowXml a => a XmlTree XmlTree
-fixHTMLNewlinesInComments = arr id
+fixHTMLNewlinesInComments = processTopDown $ processChildren mapNode `when` commentBody
+  where
+    mapNode = (getText >>. insertBreaks) `when` isText
+
+    insertBreaks :: [String] -> [XmlTree]
+    insertBreaks [s] = intersperse br $ XN.mkText <$> splitBeforeNewlines s
+    insertBreaks xs = error $ "Expected to have single text node, but got " <> show xs
+
+    -- `splitBeforeNewlines "foo\n\nbar\nbaz" = ["foo", "\n", "\nbar", "\nbaz"]`
+    splitBeforeNewlines :: String -> [String]
+    splitBeforeNewlines = split $ keepDelimsL (whenElt (== '\n'))
+
+    commentBody = hasAttrValue "class" (== "comment_body")
+    br = XN.mkElement (mkName "br") [] [] -- eelem "br"
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;

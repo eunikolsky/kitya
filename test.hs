@@ -92,3 +92,50 @@ spec = do
         >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
 
       actual `shouldBe` expected
+
+    it "prepends <br/> to newlines in text comments" $ do
+      let html = T.unpack [trimming|
+        <html>
+        <body>body
+          <div id="comm" class="comments">
+            <div class="comment">
+              <div class="comment_body">foo
+
+              bar</div>
+            </div>
+            <div class="comment">
+              <div class="comment_body">
+                второй
+                комментарий
+                </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      |]
+
+      let expected = T.unpack [trimming|
+        <html>
+        <body>body
+          <div id="comm" class="comments">
+            <div class="comment">
+              <div class="comment_body">foo<br/>
+        <br/>
+              bar</div>
+            </div>
+            <div class="comment">
+              <div class="comment_body"><br/>
+                второй<br/>
+                комментарий<br/>
+                </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      |]
+
+      actual <- fmap head . runX $ readString [withParseHTML yes] html
+        >>> fixHTMLNewlinesInComments
+        >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
+      actual `shouldBe` expected
