@@ -139,6 +139,43 @@ spec = do
 
       actual `shouldBe` expected
 
+    it "prepends <br/> to newlines in text in other tags" $ do
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo
+          <a href="example.org">multi
+          line</a>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body">
+            <li>foo
+              <b>bo
+                ld</b></li> bar
+          </div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_body">foo<br/>
+          <a href="example.org">multi<br/>
+          line</a><br/>
+          bar</div>
+        </div>
+        <div class="comment">
+          <div class="comment_body"><br/>
+            <li>foo<br/>
+              <b>bo<br/>
+                ld</b></li> bar<br/>
+          </div>
+        </div>
+      |]
+
+      actual <- fixHTMLNewlinesInComments' html
+
+      actual `shouldBe` expected
+
 mkComments :: T.Text -> String
 mkComments commentsText = T.unpack [trimming|
   <html>

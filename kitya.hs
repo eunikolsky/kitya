@@ -370,7 +370,7 @@ removeLinksToImages = processTopDown $
 -- have newlines and `<br/>` tags in comments, but Kitya's lj replicator lost
 -- the breaks.
 fixHTMLNewlinesInComments :: ArrowXml a => a XmlTree XmlTree
-fixHTMLNewlinesInComments = processTopDown $ processChildren mapNode `when` commentBody
+fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` commentBody
   where
     mapNode = (getText >>. insertBreaks) `when` isText
 
@@ -383,7 +383,7 @@ fixHTMLNewlinesInComments = processTopDown $ processChildren mapNode `when` comm
     splitBeforeNewlines = split $ keepDelimsL (whenElt (== '\n'))
 
     commentBody = hasAttrValue "class" (== "comment_body")
-    br = XN.mkElement (mkName "br") [] [] -- eelem "br"
+    br = XN.mkElement (mkName "br") [] []
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;
