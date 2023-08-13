@@ -67,3 +67,28 @@ spec = do
         >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
 
       actual `shouldBe` expected
+
+  describe "fixHTMLNewlinesInComments" $ do
+    it "leaves text comments w/o newlines as is" $ do
+      let html = T.unpack [trimming|
+        <html>
+        <body>body
+          <div id="comm" class="comments">
+            <div class="comment">
+              <div class="comment_body">foo bar</div>
+            </div>
+            <div class="comment">
+              <div class="comment_body">второй</div>
+            </div>
+          </div>
+        </body>
+        </html>
+      |]
+
+      let expected = html
+
+      actual <- fmap head . runX $ readString [withParseHTML yes] html
+        >>> fixHTMLNewlinesInComments
+        >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
+      actual `shouldBe` expected

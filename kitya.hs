@@ -251,6 +251,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , removeMenu
       , removePreCommentsTable
       , downgradeCommentsHeader
+      , fixHTMLNewlinesInComments
       , treeizeComments nextFile
       , removeBodyInComments
       -- warning: `wrapDate` has to be after `removeBodyInComments` because it
@@ -364,6 +365,12 @@ removeLinksToImages = processTopDown $
     imageSourceFromLink = mkAttr (mkName "src") (getAttrValue0 "href" >>> mkText)
     imageLink = hasName "a" /> hasName "img"
 
+-- | Inserts `<br/>` before every `\n` in a comment text, otherwise all comments
+-- are displayed w/o any intended line breaks. Note: livejournal's comments do
+-- have newlines and `<br/>` tags in comments, but Kitya's lj replicator lost
+-- the breaks.
+fixHTMLNewlinesInComments :: ArrowXml a => a XmlTree XmlTree
+fixHTMLNewlinesInComments = arr id
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;
