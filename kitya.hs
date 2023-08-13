@@ -9,6 +9,8 @@
 {-# LANGUAGE NamedFieldPuns, OverloadedStrings, RecordWildCards, TypeApplications #-}
 {-# OPTIONS_GHC -Wall -Werror=missing-methods -Werror=missing-fields #-}
 
+module Kitya where
+
 import Control.Exception (bracket, finally)
 import Control.Monad (filterM, unless, void)
 import Data.Char (isDigit)
