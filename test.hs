@@ -176,6 +176,74 @@ spec = do
 
       actual `shouldBe` expected
 
+  describe "removeCommentersProfileLinks" $ do
+    let removeCommentersProfileLinks' html =
+          fmap head . runX $ readString [withParseHTML yes] html
+            >>> removeCommentersProfileLinks
+            >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
+    it "removes commenter's profile link" $ do
+      -- note: this HTML is as after `removeLinksToImages` processing
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject"><span>
+            <a href="http://example.livejournal.com/"><b>example</b></a>
+          </span></div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject"><span>
+            <b>example</b>
+          </span></div>
+        </div>
+      |]
+
+      actual <- removeCommentersProfileLinks' html
+
+      actual `shouldBe` expected
+
+    it "leaves Anonymous' commenter's profile w/o link as is" $ do
+      -- note: this HTML is as after `removeLinksToImages` processing
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject">
+            Аноним
+          </div>
+        </div>
+      |]
+
+      let expected = html
+
+      actual <- removeCommentersProfileLinks' html
+
+      actual `shouldBe` expected
+
+    it "leaves next post link" $ do
+      -- note: this HTML is as after `treeizeComments` processing
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject">
+            <span><a href="http://example.livejournal.com/"><b>example</b></a></span>
+            <a class="next_post_link" href="next.html">next</a>
+          </div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject">
+            <span><b>example</b></span>
+            <a class="next_post_link" href="next.html">next</a>
+          </div>
+        </div>
+      |]
+
+      actual <- removeCommentersProfileLinks' html
+
+      actual `shouldBe` expected
+
 mkComments :: T.Text -> String
 mkComments commentsText = T.unpack [trimming|
   <html>

@@ -260,6 +260,9 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , wrapDate
       , editStyles
       , removeLinksToImages
+      -- warning: `removeCommentersProfileLinks` is tested to be after
+      -- `removeLinksToImages` (but it may also work before)
+      , removeCommentersProfileLinks
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
 
@@ -286,6 +289,9 @@ downgradeCommentsHeader = processTopDown (setElemName (mkName "h2") `when` (hasN
 commentsDiv :: ArrowXml a => a XmlTree XmlTree
 commentsDiv = hasName "div" >>> hasAttrValue "id" (== "comm")
 
+commentSubject :: ArrowXml a => a XmlTree XmlTree
+commentSubject = hasAttrValue "class" (== "comment_subject")
+
 -- |Removes unnecessary (and causing visual changes for `ebook-convert`) `<body>`
 -- tags inside comments. The comment body is already wrapped in a `<div>`.
 removeBodyInComments :: ArrowXml a => a XmlTree XmlTree
@@ -296,9 +302,8 @@ removeBodyInComments = processTopDown $ removeBodyTags `when` commentsDiv
 treeizeComments :: ArrowXml a => Maybe FilePath -> a XmlTree XmlTree
 treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
   where
-    isCommentSubjectDiv = hasAttrValue "class" (== "comment_subject")
     addLink = replaceChildren (getChildren <+> link nextPostLink)
-    addLinks = doTreeizeComments >>> processChildren (addLink `when` isCommentSubjectDiv)
+    addLinks = doTreeizeComments >>> processChildren (addLink `when` commentSubject)
     link src = mkelem name (sattr "class" "next_post_link" : attrs) [txt . textEscapeXml $ text]
       where
         name = maybe "span" (const "a") src
@@ -384,6 +389,16 @@ fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` comme
 
     commentBody = hasAttrValue "class" (== "comment_body")
     br = XN.mkElement (mkName "br") [] []
+
+-- | Remove useless links to commenter's profiles. As there can be many of them
+-- on the left side of the page, the user may unintentionally tap on a link
+-- instead of scrolling the page.
+removeCommentersProfileLinks :: ArrowXml a => a XmlTree XmlTree
+removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubject
+  where
+    removeLinks = processTopDown $ getChildren `when` profileLink
+    profileLink = hasName "a" >>> hasAttrValue "href" (".livejournal.com" `isInfixOf`)
+
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;
