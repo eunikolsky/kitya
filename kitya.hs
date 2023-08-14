@@ -9,13 +9,15 @@
 {-# LANGUAGE NamedFieldPuns, OverloadedStrings, RecordWildCards, TypeApplications #-}
 {-# OPTIONS_GHC -Wall -Werror=missing-methods -Werror=missing-fields #-}
 
+module Kitya where
+
 import Control.Exception (bracket, finally)
 import Control.Monad (filterM, unless, void)
 import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (intercalate, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
+import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -150,13 +152,25 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
     args =
       [ "index.html"
       , outputDir </> "kitya_" <> yearMonth <.> "epub"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#html-input-options
       , "--breadth-first"
       , "--max-levels", "1"
+      , "--allow-local-files-outside-root"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#epub-output-options
+      , "--flow-size", "0"
+      , "--preserve-cover-aspect-ratio"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#structure-detection
       , "--chapter", "/"
       , "--page-breaks-before", "/"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#table-of-contents
       , "--level1-toc", "//h:h1"
       , "--level2-toc", "//h:h2"
-      , "--flow-size", "0"
+
+      -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#metadata
       , "--authors", "Китя Карлсон"
       , "--book-producer", "egeek"
       , "--language", "Russian"
@@ -235,15 +249,29 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
     process = seqA
       [ movePostHeaderBeforeDate
       , removeMenu
-      , wrapDate
       , removePreCommentsTable
       , downgradeCommentsHeader
-      , treeizeComments nextFile
+      , fixHTMLNewlinesInComments
+      , treeizeComments maxCommentLevel nextFile
       , removeBodyInComments
+      -- warning: `wrapDate` has to be after `removeBodyInComments` because it
+      -- wraps tagless text in `body` tags with a `div`, and we don't need extra
+      -- `div`s in comments
+      , wrapDate
       , editStyles
       , removeLinksToImages
+      -- warning: `removeCommentersProfileLinks` is tested to be after
+      -- `removeLinksToImages` (but it may also work before)
+      , removeCommentersProfileLinks
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
+
+    -- | Too deeply nested comment chains stop being readable on an e-reader w/o
+    -- horizontal scrolling because they go off-screen due to the too large
+    -- accumulated left margin. So this constant defines the maximum comment
+    -- nesting level, after which comments are skipped.
+    maxCommentLevel :: MaxLevel
+    maxCommentLevel = 99
 
 movePostHeaderBeforeDate :: ArrowXml a => a XmlTree XmlTree
 movePostHeaderBeforeDate = processTopDown $
@@ -268,6 +296,9 @@ downgradeCommentsHeader = processTopDown (setElemName (mkName "h2") `when` (hasN
 commentsDiv :: ArrowXml a => a XmlTree XmlTree
 commentsDiv = hasName "div" >>> hasAttrValue "id" (== "comm")
 
+commentSubject :: ArrowXml a => a XmlTree XmlTree
+commentSubject = hasAttrValue "class" (== "comment_subject")
+
 -- |Removes unnecessary (and causing visual changes for `ebook-convert`) `<body>`
 -- tags inside comments. The comment body is already wrapped in a `<div>`.
 removeBodyInComments :: ArrowXml a => a XmlTree XmlTree
@@ -275,22 +306,34 @@ removeBodyInComments = processTopDown $ removeBodyTags `when` commentsDiv
   where
     removeBodyTags = processTopDown $ getChildren `when` hasName "body"
 
-treeizeComments :: ArrowXml a => Maybe FilePath -> a XmlTree XmlTree
-treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
+-- TODO add next post links could be extracted from here
+treeizeComments :: ArrowXml a => MaxLevel -> Maybe FilePath -> a XmlTree XmlTree
+treeizeComments maxCommentLevel nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
   where
-    isCommentSubjectDiv = hasAttrValue "class" (== "comment_subject")
     addLink = replaceChildren (getChildren <+> link nextPostLink)
-    addLinks = doTreeizeComments >>> processChildren (addLink `when` isCommentSubjectDiv)
+    addLinks = doTreeizeComments >>> processChildren (addLink `when` commentSubject)
     link src = mkelem name (sattr "class" "next_post_link" : attrs) [txt . textEscapeXml $ text]
       where
         name = maybe "span" (const "a") src
         attrs = maybe [] (singleton . sattr "href") src
-        text = maybe "|||" (const ">>>") src
+        text = maybe "|||||" (const ">>>>>") src
     -- note: the parenthesis around the expression before `>>.` are extremely important! the code will
     -- run without them, but it won't do what's needed: here it groups all the modified `div`s into a
     -- list and passes it to `treeize`; w/o the parenthesis, `treeize` would be called multiple times
     -- with a singleton list evey time.
-    doTreeizeComments = (getChildren >>> hasName "div" >>> (((getAttrValue0 "style" >>. map levelFromStyle) &&& removeAttr "style") >>> arr (uncurry LXmlTree))) >>. treeize
+    doTreeizeComments =
+      (
+        getChildren
+          >>> hasName "div"
+          >>>
+            (
+              (
+                (getAttrValue0 "style" >>. map levelFromStyle)
+                  &&& removeAttr "style"
+              )
+              >>> arr (uncurry LXmlTree)
+            )
+      ) >>. treeize maxCommentLevel
 
     leaveHeader = getChildren >>> hasNameWith (("h" `isPrefixOf`) . localPart)
 
@@ -302,22 +345,30 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
         appendCommentStyles = flip (<>) . unlines $
           [ ".comment { margin-left: 0.5em; }"
           , "#comm > .comment { margin-left: 0; }"
-          , ".next_post_link { font-weight: bold; float: right; }"
+          , ".next_post_link { font-weight: bold; float: right; color: red; }"
           ]
 
 editStyles :: ArrowXml a => a XmlTree XmlTree
 editStyles = processTopDownUntil $ hasName "style" `guards` processChildren (changeText $ append . remove)
   where
-    append = (<> "div.body img { max-width: 80%; width: auto; height: auto; }\n")
+    append = (<> "date { display: inline; /* for koreader */ }\n")
+
+    -- margin-left
+    removeCommentsStyles = filter ((/= ".comments") . selector)
+    leaveOnlyBorderBottomStyleForBody = map (\block ->
+        (if selector block == ".body"
+          then second (filter $ (== "border-bottom") . attrName)
+          else id)
+        block)
+
+    selector = fst
+    attrName = fst
+
     remove = TL.unpack
       . TB.toLazyText
       . renderBlocks
-      . map (\block ->
-          (if fst block == ".body"
-            then second (filter $ (== "border-bottom") . fst)
-            else id)
-          block)
-      . filter ((/= ".comments") . fst)
+      . leaveOnlyBorderBottomStyleForBody
+      . removeCommentsStyles
       . fromRight []
       . parseBlocks
       . T.pack
@@ -339,6 +390,35 @@ removeLinksToImages = processTopDown $
     imageSourceFromLink = mkAttr (mkName "src") (getAttrValue0 "href" >>> mkText)
     imageLink = hasName "a" /> hasName "img"
 
+-- | Inserts `<br/>` before every `\n` in a comment text, otherwise all comments
+-- are displayed w/o any intended line breaks. Note: livejournal's comments do
+-- have newlines and `<br/>` tags in comments, but Kitya's lj replicator lost
+-- the breaks.
+fixHTMLNewlinesInComments :: ArrowXml a => a XmlTree XmlTree
+fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` commentBody
+  where
+    mapNode = (getText >>. insertBreaks) `when` isText
+
+    insertBreaks :: [String] -> [XmlTree]
+    insertBreaks [s] = intersperse br $ XN.mkText <$> splitBeforeNewlines s
+    insertBreaks xs = error $ "Expected to have single text node, but got " <> show xs
+
+    -- `splitBeforeNewlines "foo\n\nbar\nbaz" = ["foo", "\n", "\nbar", "\nbaz"]`
+    splitBeforeNewlines :: String -> [String]
+    splitBeforeNewlines = split $ keepDelimsL (whenElt (== '\n'))
+
+    commentBody = hasAttrValue "class" (== "comment_body")
+    br = XN.mkElement (mkName "br") [] []
+
+-- | Remove useless links to commenter's profiles. As there can be many of them
+-- on the left side of the page, the user may unintentionally tap on a link
+-- instead of scrolling the page.
+removeCommentersProfileLinks :: ArrowXml a => a XmlTree XmlTree
+removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubject
+  where
+    removeLinks = processTopDown $ getChildren `when` profileLink
+    profileLink = hasName "a" >>> hasAttrValue "href" (".livejournal.com" `isInfixOf`)
+
 
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;
@@ -349,16 +429,25 @@ data LXmlTree = LXmlTree
   }
   deriving (Show)
 
+type MaxLevel = Int
+
 -- Fuckng AA!!
-treeize :: [LXmlTree] -> XmlTrees
-treeize = lforest 0
+-- TODO move `maxLevel` processing out of here; I added it here for simplicity
+-- because the level is already known at the moment
+treeize :: MaxLevel -> [LXmlTree] -> XmlTrees
+treeize maxLevel = lforest 0
   where
     lforest :: Int -> [LXmlTree] -> XmlTrees
     lforest level xs = ltree level <$> sublistsFromLevel level xs
 
     ltree :: Int -> [LXmlTree] -> XmlTree
-    ltree level xs = let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
-      in XN.NTree root' (children <> lforest (level + 1) rest)
+    ltree level xs =
+      let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
+          nextLevel = level + 1
+          nestedLevels = if nextLevel <= maxLevel
+            then lforest nextLevel rest
+            else []
+      in XN.NTree root' $ children <> nestedLevels
 
 levelFromStyle :: String -> Level
 levelFromStyle = fromMargin . read @Int . takeWhile isDigit . dropWhile (not . isDigit)
