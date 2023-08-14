@@ -393,8 +393,8 @@ fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` comme
 removeCommentersProfileLinks :: ArrowXml a => a XmlTree XmlTree
 removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubject
   where
-    removeLinks = processTopDown $ getChildren `when` link
-    link = hasName "a"
+    removeLinks = processTopDown $ getChildren `when` profileLink
+    profileLink = hasName "a" >>> hasAttrValue "href" (".livejournal.com" `isInfixOf`)
 
 
 type Level = Int
