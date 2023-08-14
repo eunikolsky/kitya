@@ -385,6 +385,17 @@ fixHTMLNewlinesInComments = processTopDown $ processTopDown mapNode `when` comme
     commentBody = hasAttrValue "class" (== "comment_body")
     br = XN.mkElement (mkName "br") [] []
 
+-- | Remove useless links to commenter's profiles. As there can be many of them
+-- on the left side of the page, the user may unintentionally tap on a link
+-- instead of scrolling the page.
+removeCommentersProfileLinks :: ArrowXml a => a XmlTree XmlTree
+removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubject
+  where
+    removeLinks = processTopDown $ getChildren `when` link
+    commentSubject = hasAttrValue "class" (== "comment_subject")
+    link = hasName "a"
+
+
 type Level = Int
 -- |`XmlTree` (in our case, a `div` element containing a comment) with its level extracted from the style;
 -- the level is extracted beforehand so that the style doesn't need to be parsed again and again.

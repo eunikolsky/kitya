@@ -176,6 +176,35 @@ spec = do
 
       actual `shouldBe` expected
 
+  describe "removeCommentersProfileLinks" $ do
+    let removeCommentersProfileLinks' html =
+          fmap head . runX $ readString [withParseHTML yes] html
+            >>> removeCommentersProfileLinks
+            >>> writeDocumentToString [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no]
+
+    it "removes commenter's profile links" $ do
+      -- note: this HTML is as after `removeLinksToImages` processing
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject"><span>
+            <a href="http://example.livejournal.com/"><b>example</b></a>
+          </span></div>
+        </div>
+      |]
+
+      let expected = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject"><span>
+            <b>example</b>
+          </span></div>
+        </div>
+      |]
+
+      actual <- removeCommentersProfileLinks' html
+
+      actual `shouldBe` expected
+
+
 mkComments :: T.Text -> String
 mkComments commentsText = T.unpack [trimming|
   <html>
