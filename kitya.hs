@@ -286,6 +286,9 @@ downgradeCommentsHeader = processTopDown (setElemName (mkName "h2") `when` (hasN
 commentsDiv :: ArrowXml a => a XmlTree XmlTree
 commentsDiv = hasName "div" >>> hasAttrValue "id" (== "comm")
 
+commentSubject :: ArrowXml a => a XmlTree XmlTree
+commentSubject = hasAttrValue "class" (== "comment_subject")
+
 -- |Removes unnecessary (and causing visual changes for `ebook-convert`) `<body>`
 -- tags inside comments. The comment body is already wrapped in a `<div>`.
 removeBodyInComments :: ArrowXml a => a XmlTree XmlTree
@@ -296,9 +299,8 @@ removeBodyInComments = processTopDown $ removeBodyTags `when` commentsDiv
 treeizeComments :: ArrowXml a => Maybe FilePath -> a XmlTree XmlTree
 treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
   where
-    isCommentSubjectDiv = hasAttrValue "class" (== "comment_subject")
     addLink = replaceChildren (getChildren <+> link nextPostLink)
-    addLinks = doTreeizeComments >>> processChildren (addLink `when` isCommentSubjectDiv)
+    addLinks = doTreeizeComments >>> processChildren (addLink `when` commentSubject)
     link src = mkelem name (sattr "class" "next_post_link" : attrs) [txt . textEscapeXml $ text]
       where
         name = maybe "span" (const "a") src
@@ -392,7 +394,6 @@ removeCommentersProfileLinks :: ArrowXml a => a XmlTree XmlTree
 removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubject
   where
     removeLinks = processTopDown $ getChildren `when` link
-    commentSubject = hasAttrValue "class" (== "comment_subject")
     link = hasName "a"
 
 
