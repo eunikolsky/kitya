@@ -204,6 +204,22 @@ spec = do
 
       actual `shouldBe` expected
 
+    it "leaves Anonymous' commenter's profile w/o link as is" $ do
+      -- note: this HTML is as after `removeLinksToImages` processing
+      let html = mkComments [trimming|
+        <div class="comment">
+          <div class="comment_subject">
+            Аноним
+          </div>
+        </div>
+      |]
+
+      let expected = html
+
+      actual <- removeCommentersProfileLinks' html
+
+      actual `shouldBe` expected
+
 
 mkComments :: T.Text -> String
 mkComments commentsText = T.unpack [trimming|
