@@ -299,6 +299,7 @@ removeBodyInComments = processTopDown $ removeBodyTags `when` commentsDiv
   where
     removeBodyTags = processTopDown $ getChildren `when` hasName "body"
 
+-- TODO add next post links could be extracted from here
 treeizeComments :: ArrowXml a => Maybe FilePath -> a XmlTree XmlTree
 treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
   where
