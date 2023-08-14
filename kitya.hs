@@ -260,6 +260,9 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , wrapDate
       , editStyles
       , removeLinksToImages
+      -- warning: `removeCommentersProfileLinks` is tested to be after
+      -- `removeLinksToImages` (but it may also work before)
+      , removeCommentersProfileLinks
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
 
