@@ -252,7 +252,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , removePreCommentsTable
       , downgradeCommentsHeader
       , fixHTMLNewlinesInComments
-      , treeizeComments nextFile
+      , treeizeComments maxCommentLevel nextFile
       , removeBodyInComments
       -- warning: `wrapDate` has to be after `removeBodyInComments` because it
       -- wraps tagless text in `body` tags with a `div`, and we don't need extra
@@ -265,6 +265,13 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       , removeCommentersProfileLinks
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
+
+    -- | Too deeply nested comment chains stop being readable on an e-reader w/o
+    -- horizontal scrolling because they go off-screen due to the too large
+    -- accumulated left margin. So this constant defines the maximum comment
+    -- nesting level, after which comments are skipped.
+    maxCommentLevel :: MaxLevel
+    maxCommentLevel = 99
 
 movePostHeaderBeforeDate :: ArrowXml a => a XmlTree XmlTree
 movePostHeaderBeforeDate = processTopDown $
@@ -300,8 +307,8 @@ removeBodyInComments = processTopDown $ removeBodyTags `when` commentsDiv
     removeBodyTags = processTopDown $ getChildren `when` hasName "body"
 
 -- TODO add next post links could be extracted from here
-treeizeComments :: ArrowXml a => Maybe FilePath -> a XmlTree XmlTree
-treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
+treeizeComments :: ArrowXml a => MaxLevel -> Maybe FilePath -> a XmlTree XmlTree
+treeizeComments maxCommentLevel nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <+> addLinks ) `when` commentsDiv) >>> tweakStyles )
   where
     addLink = replaceChildren (getChildren <+> link nextPostLink)
     addLinks = doTreeizeComments >>> processChildren (addLink `when` commentSubject)
@@ -326,7 +333,7 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
               )
               >>> arr (uncurry LXmlTree)
             )
-      ) >>. treeize
+      ) >>. treeize maxCommentLevel
 
     leaveHeader = getChildren >>> hasNameWith (("h" `isPrefixOf`) . localPart)
 
@@ -422,16 +429,25 @@ data LXmlTree = LXmlTree
   }
   deriving (Show)
 
+type MaxLevel = Int
+
 -- Fuckng AA!!
-treeize :: [LXmlTree] -> XmlTrees
-treeize = lforest 0
+-- TODO move `maxLevel` processing out of here; I added it here for simplicity
+-- because the level is already known at the moment
+treeize :: MaxLevel -> [LXmlTree] -> XmlTrees
+treeize maxLevel = lforest 0
   where
     lforest :: Int -> [LXmlTree] -> XmlTrees
     lforest level xs = ltree level <$> sublistsFromLevel level xs
 
     ltree :: Int -> [LXmlTree] -> XmlTree
-    ltree level xs = let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
-      in XN.NTree root' (children <> lforest (level + 1) rest)
+    ltree level xs =
+      let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
+          nextLevel = level + 1
+          nestedLevels = if nextLevel <= maxLevel
+            then lforest nextLevel rest
+            else []
+      in XN.NTree root' $ children <> nestedLevels
 
 levelFromStyle :: String -> Level
 levelFromStyle = fromMargin . read @Int . takeWhile isDigit . dropWhile (not . isDigit)
