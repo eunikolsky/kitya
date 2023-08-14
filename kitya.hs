@@ -313,7 +313,19 @@ treeizeComments nextPostLink = processTopDown ( (replaceChildren ( leaveHeader <
     -- run without them, but it won't do what's needed: here it groups all the modified `div`s into a
     -- list and passes it to `treeize`; w/o the parenthesis, `treeize` would be called multiple times
     -- with a singleton list evey time.
-    doTreeizeComments = (getChildren >>> hasName "div" >>> (((getAttrValue0 "style" >>. map levelFromStyle) &&& removeAttr "style") >>> arr (uncurry LXmlTree))) >>. treeize
+    doTreeizeComments =
+      (
+        getChildren
+          >>> hasName "div"
+          >>>
+            (
+              (
+                (getAttrValue0 "style" >>. map levelFromStyle)
+                  &&& removeAttr "style"
+              )
+              >>> arr (uncurry LXmlTree)
+            )
+      ) >>. treeize
 
     leaveHeader = getChildren >>> hasNameWith (("h" `isPrefixOf`) . localPart)
 
