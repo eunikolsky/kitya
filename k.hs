@@ -23,6 +23,6 @@ getFile = do
 extractEPUB :: FilePath -> IO ()
 extractEPUB file = do
   let dir = dropExtension file
-  out <- readProcess "unzip" ["-q", file, "-d", dir] ""
+  out <- readProcess "unzip" ["-qo", file, "-d", dir] ""
   when (not $ null out) $
     putStrLn $ mconcat ["extract ", file, ":\n", out]
