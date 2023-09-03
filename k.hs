@@ -56,6 +56,8 @@ createEPUB dir epub = do
   -- we need to `zip` in that directory, which means the target `epub` file,
   -- when relative, will point to the wrong place (within the new working dir),
   -- so we to make the `epub` filepath absolute first
+  -- an alternative would be to change the working directory in the program here,
+  -- but that would make the function not concurrent
   absEPUB <- makeAbsolute epub
 
   -- wow! even though `man zip` mentions `--no-extra`:
