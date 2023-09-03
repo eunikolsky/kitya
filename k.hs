@@ -18,6 +18,7 @@ main = do
 
   removeCommentsInAllBlogposts dir
   leaveTopLevelTOCEntries $ dir </> "toc.ncx"
+  removeIndexFileEntry $ dir </> "content.opf"
 
   let newEPUB = epub -<.> ".new.epub"
   createEPUB dir newEPUB
@@ -114,3 +115,11 @@ removeCommentsBlogpost f = M.void . runX $
   -- this leaves the `<div id="comm"></div>` itself
   >>> processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
   >>> writeDocument [withOutputXHTML, withXmlPi no, withAddDefaultDTD no] f
+
+-- | Removes the `index.html` file from the contents list; it only added an
+-- empty page in the book.
+removeIndexFileEntry :: FilePath -> IO ()
+removeIndexFileEntry f = M.void . runX $
+  readDocument [withValidate no] f
+  >>> processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
+  >>> writeDocument [] f
