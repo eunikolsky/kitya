@@ -19,7 +19,7 @@ main = do
   removeCommentsInAllBlogposts dir
   leaveTopLevelTOCEntries $ dir </> "toc.ncx"
   removeIndexFile dir
-  removeIndexFileEntry $ dir </> "content.opf"
+  modifyContent $ dir </> "content.opf"
 
   let newEPUB = epub -<.> ".new.epub"
   createEPUB dir newEPUB
@@ -122,10 +122,16 @@ removeCommentsBlogpost = processXML $
   -- this leaves the `<div id="comm"></div>` itself
   processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
 
+-- | Modifies the `content.opf` file:
+-- * removes `index.html`
+modifyContent :: FilePath -> IO ()
+modifyContent = processXML $
+  removeIndexFileEntry
+
 -- | Removes the `index.html` file from the contents list; it only added an
 -- empty page in the book.
-removeIndexFileEntry :: FilePath -> IO ()
-removeIndexFileEntry = processXML $
+removeIndexFileEntry :: ArrowXml a => a XmlTree XmlTree
+removeIndexFileEntry =
   processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
 
 -- | Removes `index.html` in the given directory.
