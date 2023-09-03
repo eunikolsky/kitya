@@ -61,10 +61,11 @@ createEPUB dir epub = do
   -- wow! even though `man zip` mentions `--no-extra`:
   -- `zip error: Invalid command arguments (long option 'no-extra' not supported)`!
   -- (zip 3.0)
-  runProc $ (proc "zip" ["-q0X", absEPUB, fileMimetype]) { cwd = Just dir }
+  runProc $ (proc "zip" ["--quiet", "-0X", absEPUB, fileMimetype]) { cwd = Just dir }
 
   -- `META-INF/` should be the second file in the archive
-  runProc $ (proc "zip" $ ["-q9Xgr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
+  -- (`--recursive-paths` isn't supported either)
+  runProc $ (proc "zip" $ ["--quiet", "--grow", "-9Xr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
 
 -- | Runs the given `CreateProcess` with an empty `stdin`; prints the returned
 -- `stdout` and/or `stderr` if non-empty; expects a successful exit code,
