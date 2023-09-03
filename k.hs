@@ -18,6 +18,7 @@ main = do
 
   removeCommentsInAllBlogposts dir
   leaveTopLevelTOCEntries $ dir </> "toc.ncx"
+  removeIndexFile dir
   removeIndexFileEntry $ dir </> "content.opf"
 
   let newEPUB = epub -<.> ".new.epub"
@@ -126,3 +127,7 @@ removeCommentsBlogpost = processXML $
 removeIndexFileEntry :: FilePath -> IO ()
 removeIndexFileEntry = processXML $
   processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
+
+-- | Removes `index.html` in the given directory.
+removeIndexFile :: FilePath -> IO ()
+removeIndexFile = removeFile . (</> "index.html")
