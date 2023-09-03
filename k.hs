@@ -16,6 +16,7 @@ main = do
   epub <- getFile
   dir <- extractEPUB epub
 
+  removeCommentsInAllBlogposts dir
   leaveTopLevelTOCEntries $ dir </> "toc.ncx"
 
   let newEPUB = epub -<.> ".new.epub"
@@ -98,3 +99,18 @@ leaveTopLevelTOCEntries f = M.void . runX $
   readDocument [withValidate no] f
   >>> processTopDownUntil ((hasName "navPoint") `guards` (processChildren $ none `when` (hasName "navPoint")))
   >>> writeDocument [] f
+
+-- | Removes comments in all the HTML files in the given directory.
+removeCommentsInAllBlogposts :: FilePath -> IO ()
+removeCommentsInAllBlogposts dir = do
+  allFiles <- fmap (dir </>) <$> listDirectory dir
+  let htmls = filter ((== ".html") . takeExtension) allFiles
+  M.forM_ htmls removeCommentsBlogpost
+
+-- | Removes the comments section from the HTML blogpost file.
+removeCommentsBlogpost :: FilePath -> IO ()
+removeCommentsBlogpost f = M.void . runX $
+  readDocument [withValidate no, withParseHTML yes, withPreserveComment yes] f
+  -- this leaves the `<div id="comm"></div>` itself
+  >>> processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
+  >>> writeDocument [withOutputXHTML, withXmlPi no, withAddDefaultDTD no] f
