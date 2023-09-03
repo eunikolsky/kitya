@@ -29,9 +29,7 @@ getFile = do
 extractEPUB :: EPUBFile -> IO FilePath
 extractEPUB file = do
   let dir = dropExtension file
-  out <- readProcess "unzip" ["-qo", file, "-d", dir] ""
-  when (not $ null out) $
-    putStrLn $ mconcat ["extract ", file, ":\n", out]
+  runProc $ proc "unzip" ["-qo", file, "-d", dir]
 
   pure dir
 
@@ -61,13 +59,15 @@ createEPUB dir epub = do
   -- wow! even though `man zip` mentions `--no-extra`:
   -- `zip error: Invalid command arguments (long option 'no-extra' not supported)`!
   -- (zip 3.0)
-  let zip0 = (proc "zip" ["-q0X", absEPUB, fileMimetype]) { cwd = Just dir }
-  out <- readCreateProcess zip0 ""
-  when (not $ null out) $
-    putStrLn $ mconcat ["zip0 ", absEPUB, ":\n", out]
+  runProc $ (proc "zip" ["-q0X", absEPUB, fileMimetype]) { cwd = Just dir }
 
   -- `META-INF/` should be the second file in the archive
-  let zip1 = (proc "zip" $ ["-q9Xgr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
-  out' <- readCreateProcess zip1 ""
-  when (not $ null out') $
-    putStrLn $ mconcat ["zip1 ", absEPUB, ":\n", out]
+  runProc $ (proc "zip" $ ["-q9Xgr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
+
+-- | Runs the given `CreateProcess` with an empty `stdin`; expects a successful
+-- exit code, terminating the program otherwise.
+runProc :: CreateProcess -> IO ()
+runProc proc = do
+  out <- readCreateProcess proc ""
+  when (not $ null out) $
+    putStrLn $ mconcat ["[", show $ cmdspec proc, "]:\n", out]
