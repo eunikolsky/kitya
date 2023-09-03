@@ -64,10 +64,16 @@ createEPUB dir epub = do
   -- `META-INF/` should be the second file in the archive
   runProc $ (proc "zip" $ ["-q9Xgr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
 
--- | Runs the given `CreateProcess` with an empty `stdin`; expects a successful
--- exit code, terminating the program otherwise.
+-- | Runs the given `CreateProcess` with an empty `stdin`; prints the returned
+-- `stdout` and/or `stderr` if non-empty; expects a successful exit code,
+-- terminating the program otherwise.
 runProc :: CreateProcess -> IO ()
 runProc proc = do
-  out <- readCreateProcess proc ""
-  when (not $ null out) $
-    putStrLn $ mconcat ["[", show $ cmdspec proc, "]:\n", out]
+  (exitCode, out, err) <- readCreateProcessWithExitCode proc ""
+
+  when (not $ null out) $ putStrLn $ mconcat ["[", show $ cmdspec proc, "] out:\n", out]
+  when (not $ null err) $ putStrLn $ mconcat ["[", show $ cmdspec proc, "] err:\n", err]
+
+  unless (exitCode == ExitSuccess) $
+    die $ mconcat ["[", show $ cmdspec proc, "] exit code ", show exitCode, " != 0"]
+
