@@ -1,6 +1,8 @@
 #!/usr/bin/env stack
 -- stack script --resolver lts-21.8
 
+{-# OPTIONS_GHC -Wall #-}
+
 import Control.Monad
 import System.Directory
 import System.Environment
@@ -68,12 +70,12 @@ createEPUB dir epub = do
 -- `stdout` and/or `stderr` if non-empty; expects a successful exit code,
 -- terminating the program otherwise.
 runProc :: CreateProcess -> IO ()
-runProc proc = do
-  (exitCode, out, err) <- readCreateProcessWithExitCode proc ""
+runProc p = do
+  (exitCode, out, err) <- readCreateProcessWithExitCode p ""
 
-  when (not $ null out) $ putStrLn $ mconcat ["[", show $ cmdspec proc, "] out:\n", out]
-  when (not $ null err) $ putStrLn $ mconcat ["[", show $ cmdspec proc, "] err:\n", err]
+  when (not $ null out) $ putStrLn $ mconcat ["[", show $ cmdspec p, "] out:\n", out]
+  when (not $ null err) $ putStrLn $ mconcat ["[", show $ cmdspec p, "] err:\n", err]
 
   unless (exitCode == ExitSuccess) $
-    die $ mconcat ["[", show $ cmdspec proc, "] exit code ", show exitCode, " != 0"]
+    die $ mconcat ["[", show $ cmdspec p, "] exit code ", show exitCode, " != 0"]
 
