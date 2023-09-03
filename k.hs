@@ -91,15 +91,22 @@ runProc p = do
 
 -- Contents processing
 
+processXML ::
+  -- ArrowXml a => a XmlTree XmlTree
+  IOSLA (XIOState ()) XmlTree XmlTree
+  -> FilePath -> IO ()
+processXML process f = M.void . runX $
+  readDocument [withValidate no] f
+  >>> process
+  >>> writeDocument [] f
+
 -- | Removes the second level of entries, corresponding to the comments, from
 -- the TOC file.
 --
 -- `playOrder` will have every other number now, but it shouldn't matter.
 leaveTopLevelTOCEntries :: FilePath -> IO ()
-leaveTopLevelTOCEntries f = M.void . runX $
-  readDocument [withValidate no] f
-  >>> processTopDownUntil ((hasName "navPoint") `guards` (processChildren $ none `when` (hasName "navPoint")))
-  >>> writeDocument [] f
+leaveTopLevelTOCEntries = processXML $
+  processTopDownUntil ((hasName "navPoint") `guards` (processChildren $ none `when` (hasName "navPoint")))
 
 -- | Removes comments in all the HTML files in the given directory.
 removeCommentsInAllBlogposts :: FilePath -> IO ()
@@ -110,16 +117,12 @@ removeCommentsInAllBlogposts dir = do
 
 -- | Removes the comments section from the HTML blogpost file.
 removeCommentsBlogpost :: FilePath -> IO ()
-removeCommentsBlogpost f = M.void . runX $
-  readDocument [withValidate no, withParseHTML yes, withPreserveComment yes] f
+removeCommentsBlogpost = processXML $
   -- this leaves the `<div id="comm"></div>` itself
-  >>> processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
-  >>> writeDocument [withOutputXHTML, withXmlPi no, withAddDefaultDTD no] f
+  processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
 
 -- | Removes the `index.html` file from the contents list; it only added an
 -- empty page in the book.
 removeIndexFileEntry :: FilePath -> IO ()
-removeIndexFileEntry f = M.void . runX $
-  readDocument [withValidate no] f
-  >>> processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
-  >>> writeDocument [] f
+removeIndexFileEntry = processXML $
+  processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
