@@ -71,11 +71,12 @@ createEPUB dir epub = do
 -- terminating the program otherwise.
 runProc :: CreateProcess -> IO ()
 runProc p = do
+  let cmd = mconcat ["[", show $ cmdspec p, "]"]
   (exitCode, out, err) <- readCreateProcessWithExitCode p ""
 
-  when (not $ null out) $ putStrLn $ mconcat ["[", show $ cmdspec p, "] out:\n", out]
-  when (not $ null err) $ putStrLn $ mconcat ["[", show $ cmdspec p, "] err:\n", err]
+  when (not $ null out) $ putStrLn $ mconcat [cmd, " out:\n", out]
+  when (not $ null err) $ putStrLn $ mconcat [cmd, " err:\n", err]
 
   unless (exitCode == ExitSuccess) $
-    die $ mconcat ["[", show $ cmdspec p, "] exit code ", show exitCode, " != 0"]
+    die $ mconcat [cmd, " exit code ", show exitCode, " != 0"]
 
