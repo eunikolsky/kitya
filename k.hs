@@ -42,11 +42,18 @@ type EPUBFile = FilePath
 -- Based on `https://ebooks.stackexchange.com/questions/257/how-to-repack-an-epub-file-from-command-line/6171#6171`
 createEPUB :: FilePath -> EPUBFile -> IO ()
 createEPUB dir epub = do
+  -- we're listing the files before creating an epub in case the new file is in
+  -- the directory (an unsupported case) so that it's not included
+  contents <- filter (\f ->
+      f /= "mimetype" && f /= "META-INF"
+    ) <$> listDirectory dir
+
   -- in order to have files directly in the archive (as is required by the format),
   -- we need to `zip` in that directory, which means the target `epub` file,
   -- when relative, will point to the wrong place (within the new working dir),
   -- so we to make the `epub` filepath absolute first
   absEPUB <- makeAbsolute epub
+
   -- wow! even though `man zip` mentions `--no-extra`:
   -- `zip error: Invalid command arguments (long option 'no-extra' not supported)`!
   -- (zip 3.0)
@@ -54,3 +61,9 @@ createEPUB dir epub = do
   out <- readCreateProcess zip0 ""
   when (not $ null out) $
     putStrLn $ mconcat ["zip0 ", absEPUB, ":\n", out]
+
+  -- `META-INF/` should be the second file in the archive
+  let zip1 = (proc "zip" $ ["-q9Xgr", absEPUB, "META-INF"] <> contents) { cwd = Just dir }
+  out' <- readCreateProcess zip1 ""
+  when (not $ null out') $
+    putStrLn $ mconcat ["zip1 ", absEPUB, ":\n", out]
