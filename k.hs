@@ -1,19 +1,23 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-21.8
+-- stack script --resolver lts-21.8 --package directory,filepath,hxt,process
 
 {-# OPTIONS_GHC -Wall #-}
 
-import Control.Monad
+import Control.Monad qualified as M
 import System.Directory
 import System.Environment
 import System.Exit
 import System.FilePath
 import System.Process
+import Text.XML.HXT.Core hiding (err)
 
 main :: IO ()
 main = do
   epub <- getFile
   dir <- extractEPUB epub
+
+  leaveTopLevelTOCEntries $ dir </> "toc.ncx"
+
   let newEPUB = epub -<.> ".new.epub"
   createEPUB dir newEPUB
 
@@ -77,9 +81,20 @@ runProc p = do
   let cmd = mconcat ["[", show $ cmdspec p, "]"]
   (exitCode, out, err) <- readCreateProcessWithExitCode p ""
 
-  when (not $ null out) $ putStrLn $ mconcat [cmd, " out:\n", out]
-  when (not $ null err) $ putStrLn $ mconcat [cmd, " err:\n", err]
+  M.when (not $ null out) $ putStrLn $ mconcat [cmd, " out:\n", out]
+  M.when (not $ null err) $ putStrLn $ mconcat [cmd, " err:\n", err]
 
-  unless (exitCode == ExitSuccess) $
+  M.unless (exitCode == ExitSuccess) $
     die $ mconcat [cmd, " exit code ", show exitCode, " != 0"]
 
+-- Contents processing
+
+-- | Removes the second level of entries, corresponding to the comments, from
+-- the TOC file.
+--
+-- `playOrder` will have every other number now, but it shouldn't matter.
+leaveTopLevelTOCEntries :: FilePath -> IO ()
+leaveTopLevelTOCEntries f = M.void . runX $
+  readDocument [withValidate no] f
+  >>> processTopDownUntil ((hasName "navPoint") `guards` (processChildren $ none `when` (hasName "navPoint")))
+  >>> writeDocument [] f
