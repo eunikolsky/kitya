@@ -15,8 +15,11 @@ import System.Process
 import Text.XML.HXT.Core hiding (err)
 
 main :: IO ()
-main = do
-  epub <- getFile
+main = getFile >>= removeCommentsEPUB
+
+-- | Remove comments from the given epub.
+removeCommentsEPUB :: EPUBFile -> IO ()
+removeCommentsEPUB epub = do
   dir <- extractEPUB epub
 
   removeCommentsInAllBlogposts dir
