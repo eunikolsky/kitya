@@ -123,16 +123,25 @@ removeCommentsBlogpost = processXML $
   processTopDownUntil (hasAttrValue "id" (== "comm") `guards` (replaceChildren none))
 
 -- | Modifies the `content.opf` file:
--- * removes `index.html`
+-- * removes `index.html`;
+-- * amends the title.
 modifyContent :: FilePath -> IO ()
 modifyContent = processXML $
-  removeIndexFileEntry
+  removeIndexFileEntry >>> updateTitle
 
 -- | Removes the `index.html` file from the contents list; it only added an
 -- empty page in the book.
 removeIndexFileEntry :: ArrowXml a => a XmlTree XmlTree
 removeIndexFileEntry =
   processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
+
+-- | Appends " (без комментариев)" to the book title.
+updateTitle :: ArrowXml a => a XmlTree XmlTree
+updateTitle = processTopDown $
+  -- I don't understand why this nested `processTopDown` is necessary because
+  -- `XText` is a child of `XTag`
+  processTopDown (changeText (<> " (без комментариев)"))
+    `when` hasName "dc:title"
 
 -- | Removes `index.html` in the given directory.
 removeIndexFile :: FilePath -> IO ()
