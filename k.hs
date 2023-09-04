@@ -15,11 +15,14 @@ import System.Process
 import Text.XML.HXT.Core hiding (err)
 
 main :: IO ()
-main = getFile >>= removeCommentsEPUB
+main = do
+  epub <- getFile
+  outDir <- ensureDir "out"
+  removeCommentsEPUB outDir epub
 
--- | Remove comments from the given epub.
-removeCommentsEPUB :: EPUBFile -> IO ()
-removeCommentsEPUB epub = do
+-- | Remove comments from the given epub, placing the new epub into the `newDir`.
+removeCommentsEPUB :: FilePath -> EPUBFile -> IO ()
+removeCommentsEPUB newDir epub = do
   dir <- extractEPUB epub
 
   removeCommentsInAllBlogposts dir
@@ -27,10 +30,17 @@ removeCommentsEPUB epub = do
   removeIndexFile dir
   modifyContent $ dir </> "content.opf"
 
-  let newEPUB = epub -<.> ".no_comm.epub"
+  let newEPUB = newDir </> epub -<.> ".no_comm.epub"
   createEPUB dir newEPUB
 
   removeDirectoryRecursive dir
+
+-- | Creates `dir` if it doesn't exist yet.
+ensureDir :: FilePath -> IO FilePath
+ensureDir dir = do
+  exists <- doesDirectoryExist dir
+  M.unless exists $ createDirectory dir
+  pure dir
 
 getFile :: IO EPUBFile
 getFile = do
