@@ -1,9 +1,12 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-21.8 --package directory,filepath,hxt,process
+-- stack script --resolver lts-21.8 --package directory,filepath,hxt,process,time
 
 {-# OPTIONS_GHC -Wall #-}
 
 import Control.Monad qualified as M
+import Data.Time.Clock
+import Data.Time.Format.ISO8601
+import Data.Time.LocalTime
 import System.Directory
 import System.Environment
 import System.Exit
@@ -124,10 +127,13 @@ removeCommentsBlogpost = processXML $
 
 -- | Modifies the `content.opf` file:
 -- * removes `index.html`;
--- * amends the title.
+-- * amends the title;
+-- * refreshes the create time to `now`.
 modifyContent :: FilePath -> IO ()
-modifyContent = processXML $
-  removeIndexFileEntry >>> updateTitle
+modifyContent f = do
+  now <- getCurrentTime
+  flip processXML f $
+    removeIndexFileEntry >>> updateTitle >>> refreshTime now
 
 -- | Removes the `index.html` file from the contents list; it only added an
 -- empty page in the book.
@@ -142,6 +148,22 @@ updateTitle = processTopDown $
   -- `XText` is a child of `XTag`
   processTopDown (changeText (<> " (без комментариев)"))
     `when` hasName "dc:title"
+
+-- | Refreshes the creation time in two places to the given time.
+refreshTime :: ArrowXml a => UTCTime -> a XmlTree XmlTree
+refreshTime time = processTopDown . seqA $
+  [ processTopDown (changeText (const showTimeNoMs)) `when` hasName "dc:date"
+  , addAttr "content" showTime
+      `when` (hasName "meta" >>> hasAttrValue "name" (== "calibre:timestamp"))
+  ]
+
+  where
+    timeNoMs = time { utctDayTime = fromIntegral @Integer . floor $ utctDayTime time }
+    -- formatting `ZonedTime` here because it shows the timezone as `+00:00`,
+    -- like in the book, whereas `UTCTime` shows it as `Z`
+    showTimeNoMs = iso8601Show $ utcToZonedTime utc timeNoMs
+
+    showTime = iso8601Show $ utcToZonedTime utc time
 
 -- | Removes `index.html` in the given directory.
 removeIndexFile :: FilePath -> IO ()
