@@ -27,6 +27,8 @@ main = do
   let newEPUB = epub -<.> ".no_comm.epub"
   createEPUB dir newEPUB
 
+  removeDirectoryRecursive dir
+
 getFile :: IO EPUBFile
 getFile = do
   args <- getArgs
