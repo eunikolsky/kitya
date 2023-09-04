@@ -24,7 +24,7 @@ main = do
   removeIndexFile dir
   modifyContent $ dir </> "content.opf"
 
-  let newEPUB = epub -<.> ".new.epub"
+  let newEPUB = epub -<.> ".no_comm.epub"
   createEPUB dir newEPUB
 
 getFile :: IO EPUBFile
