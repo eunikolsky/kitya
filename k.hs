@@ -3,12 +3,15 @@
 
 {-# OPTIONS_GHC -Wall #-}
 
+import Control.Concurrent.QSem
+import Control.Exception
 import Control.Monad qualified as M
+import Data.Foldable
 import Data.Time.Clock
 import Data.Time.Format.ISO8601
 import Data.Time.LocalTime
+import GHC.Conc
 import System.Directory
-import System.Environment
 import System.Exit
 import System.FilePath
 import System.Process
@@ -16,9 +19,13 @@ import Text.XML.HXT.Core hiding (err)
 
 main :: IO ()
 main = do
-  epub <- getFile
+  -- note: this currently returns `1` because the script isn't running with
+  -- `-threaded`
+  numProc <- getNumProcessors
+
+  epubs <- findEPUBs
   outDir <- ensureDir "out"
-  removeCommentsEPUB outDir epub
+  mapPool numProc (removeCommentsEPUB outDir) epubs
 
 -- | Remove comments from the given epub, placing the new epub into the `newDir`.
 removeCommentsEPUB :: FilePath -> EPUBFile -> IO ()
@@ -35,6 +42,10 @@ removeCommentsEPUB newDir epub = do
 
   removeDirectoryRecursive dir
 
+-- | Returns all `.epub` files in the current directory.
+findEPUBs :: IO [EPUBFile]
+findEPUBs = filter ((== ".epub") . takeExtension) <$> listDirectory "."
+
 -- | Creates `dir` if it doesn't exist yet.
 ensureDir :: FilePath -> IO FilePath
 ensureDir dir = do
@@ -42,12 +53,11 @@ ensureDir dir = do
   M.unless exists $ createDirectory dir
   pure dir
 
-getFile :: IO EPUBFile
-getFile = do
-  args <- getArgs
-  case args of
-    [file] -> pure file
-    _ -> die "k.hs <INPUT_EPUB>"
+-- | Maps the actions to up to `n` concurrent threads.
+mapPool :: Traversable t => Int -> (a -> IO ()) -> t a -> IO ()
+mapPool n f xs = do
+  sem <- newQSem n
+  traverse_ (\x -> bracket_ (waitQSem sem) (signalQSem sem) (f x)) xs
 
 -- EPUB processing
 
