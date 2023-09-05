@@ -1,12 +1,16 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-21.8 --package directory,filepath,hxt,process,time
+-- stack script --optimize --resolver lts-21.8 --ghc-options=-threaded --ghc-options=-rtsopts --ghc-options=-with-rtsopts=-N --package async,directory,filepath,hxt,process,time
+
+-- note: `--optimize` (or `--compile`) is required to compile the program so
+-- that `-threaded` works for the concurrent runtime support!
+-- See: https://stackoverflow.com/questions/46311648/multicore-parallelism-with-stack-runghc
 
 {-# OPTIONS_GHC -Wall #-}
 
+import Control.Concurrent.Async
 import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad qualified as M
-import Data.Foldable
 import Data.Time.Clock
 import Data.Time.Format.ISO8601
 import Data.Time.LocalTime
@@ -19,9 +23,7 @@ import Text.XML.HXT.Core hiding (err)
 
 main :: IO ()
 main = do
-  -- note: this currently returns `1` because the script isn't running with
-  -- `-threaded`
-  numProc <- getNumProcessors
+  numProc <- getNumCapabilities
 
   epubs <- findEPUBs
   outDir <- ensureDir "out"
@@ -54,10 +56,13 @@ ensureDir dir = do
   pure dir
 
 -- | Maps the actions to up to `n` concurrent threads.
+--
+-- Based on https://stackoverflow.com/a/18898822
 mapPool :: Traversable t => Int -> (a -> IO ()) -> t a -> IO ()
 mapPool n f xs = do
   sem <- newQSem n
-  traverse_ (\x -> bracket_ (waitQSem sem) (signalQSem sem) (f x)) xs
+  -- `mapConcurrently_`, not `traverse_`!
+  mapConcurrently_ (\x -> bracket_ (waitQSem sem) (signalQSem sem) (f x)) xs
 
 -- EPUB processing
 
