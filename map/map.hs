@@ -1,4 +1,4 @@
-{-# LANGUAGE DerivingStrategies, ImportQualifiedPost, OverloadedStrings #-}
+{-# LANGUAGE DerivingStrategies, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings #-}
 
 import Data.List (isPrefixOf)
 import Data.List.NonEmpty (NonEmpty)
