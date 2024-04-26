@@ -7,7 +7,7 @@ import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
 import Data.Text.IO qualified as T (readFile)
-import Language.ECMAScript3
+import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
 import System.Environment (getArgs)
 import System.FilePath (takeFileName)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
