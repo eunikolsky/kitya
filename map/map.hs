@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingStrategies, ImportQualifiedPost, OverloadedStrings #-}
 
 import Data.Text (Text)
-import Data.Text qualified as T (strip)
+import Data.Text qualified as T (strip, pack)
 import Data.Text.IO qualified as T (readFile)
 import Language.ECMAScript3
 import System.Environment (getArgs)
@@ -17,6 +17,7 @@ data Map = Map
   { title :: !Text
   , start :: !Coord
   , finish :: !Coord
+  , encodedPolyline :: !Text
   }
   deriving (Show)
 
@@ -25,8 +26,8 @@ parseMapInfo f = do
   t <- T.readFile f
   let tags = parseTags t
       title = T.strip . innerText . take 2 . dropWhile (/= TagOpen "title" []) $ tags
-      (start, finish) = extractCoords tags
-  pure Map{title, start, finish}
+      (start, finish, encodedPolyline) = extractTrack tags
+  pure Map{title, start, finish, encodedPolyline}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -41,8 +42,8 @@ parseJS = either (error . ("couldn't parse: " <>) . show) id . parse program ""
  - although with a varying number of `encodedPoints_*` definitions, so it's
  - fine to have a rigid parser; the files aren't going to change anyway
  -}
-extractCoords :: [Tag Text] -> (Coord, Coord)
-extractCoords tags = (getCoord "s" def, getCoord "f" def)
+extractTrack :: [Tag Text] -> (Coord, Coord, Text)
+extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolyline def)
   where
     def = findTrackDefBlock . parseJS . getJSText $ tags
     findTrackDefBlock = concatMap (mapMaybe gBrowserIsCompatibleIf) . mapMaybe initializeFunc . unJavaScript
@@ -63,6 +64,11 @@ extractCoords tags = (getCoord "s" def, getCoord "f" def)
     evalExpr (NumLit _ x) = x
     evalExpr (PrefixExpr _ PrefixMinus (NumLit _ x)) = -x
     evalExpr u = error $ "unexpected expression " <> show u
+
+    getPolyline = T.pack . concat . concatMap (mapMaybe encodedPointsVar)
+
+    encodedPointsVar (VarDeclStmt _ [VarDecl _ (Id _ "encodedPoints_0") (Just (StringLit _ t))]) = Just t
+    encodedPointsVar _ = Nothing
 
 main :: IO ()
 main = do
