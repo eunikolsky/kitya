@@ -1,5 +1,7 @@
-{-# LANGUAGE DerivingStrategies, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving #-}
 
+import Data.Aeson (ToJSON, encode)
+import Data.ByteString.Lazy qualified as BSL (putStr)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -7,6 +9,7 @@ import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
 import Data.Text.IO qualified as T (readFile)
+import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
 import System.Environment (getArgs)
 import System.FilePath (takeFileName)
@@ -15,7 +18,9 @@ import Text.HTML.TagSoup.Match (tagComment)
 
 -- | WGS84 geographic coordinate.
 data Coord = Coord { lat :: !Double, long :: !Double }
-  deriving (Show)
+  deriving (Show, Generic)
+
+deriving via Generically Coord instance ToJSON Coord
 
 -- | Information about a Kitya's track on the map.
 data Map = Map
@@ -29,7 +34,9 @@ data Map = Map
   , finish :: !Coord
   , encodedPolylines :: !(NonEmpty Text)
   }
-  deriving (Show)
+  deriving (Show, Generic)
+
+deriving via Generically Map instance ToJSON Map
 
 parseMapInfo :: FilePath -> IO Map
 parseMapInfo f = do
@@ -93,4 +100,5 @@ extractSourceMapFilename = getFilename . fromJust . find (tagComment ("Mirrored 
 main :: IO ()
 main = do
   srcFile <- head <$> getArgs
-  print =<< parseMapInfo srcFile
+  -- interesting, nothing is printed in `ghcid` if there is no `\n`
+  BSL.putStr . (<> "\n") . encode =<< parseMapInfo srcFile
