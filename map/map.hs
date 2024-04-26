@@ -16,6 +16,7 @@ data Coord = Coord { lat :: !Double, long :: !Double }
 data Map = Map
   { title :: !Text
   , start :: !Coord
+  , finish :: !Coord
   }
   deriving (Show)
 
@@ -24,8 +25,8 @@ parseMapInfo f = do
   t <- T.readFile f
   let tags = parseTags t
       title = T.strip . innerText . take 2 . dropWhile (/= TagOpen "title" []) $ tags
-      start = extractStart tags
-  pure Map{title, start}
+      (start, finish) = extractCoords tags
+  pure Map{title, start, finish}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -33,23 +34,26 @@ getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/
 parseJS :: Text -> JavaScript SourcePos
 parseJS = either (error . ("couldn't parse: " <>) . show) id . parse program ""
 
-extractStart :: [Tag Text] -> Coord
-extractStart = markerCoord . findStart . parseJS . getJSText
+{- note: looking for the necessary things in the AST is a pain (I wonder if
+ - there is something HXT-like to use arrows for tree processing?), so I
+ - dumped the AST of one map file and used it to find where the interesting
+ - things are; all the `index.{4}\.html` files have the same structure,
+ - although with a varying number of `encodedPoints_*` definitions, so it's
+ - fine to have a rigid parser; the files aren't going to change anyway
+ -}
+extractCoords :: [Tag Text] -> (Coord, Coord)
+extractCoords tags = (getCoord "s" def, getCoord "f" def)
   where
-    {- note: looking for the necessary things in the AST is a pain (I wonder if
-     - there is something HXT-like to use arrows for tree processing?), so I
-     - dumped the AST of one map file and used it to find where the interesting
-     - things are; all the `index.{4}\.html` files have the same structure,
-     - although with a varying number of `encodedPoints_*` definitions, so it's
-     - fine to have a rigid parser; the files aren't going to change anyway
-     -}
-    findStart = concat . concatMap (mapMaybe startVar) . concatMap (mapMaybe gBrowserIsCompatibleIf) . mapMaybe initializeFunc . unJavaScript
+    def = findTrackDefBlock . parseJS . getJSText $ tags
+    findTrackDefBlock = concatMap (mapMaybe gBrowserIsCompatibleIf) . mapMaybe initializeFunc . unJavaScript
     initializeFunc (FunctionStmt _ (Id _ "initialize") _ ss) = Just ss
     initializeFunc _ = Nothing
     gBrowserIsCompatibleIf (IfSingleStmt _ (CallExpr _ (VarRef _ (Id _ "GBrowserIsCompatible")) []) (BlockStmt _ ss)) = Just ss
     gBrowserIsCompatibleIf _ = Nothing
-    startVar (VarDeclStmt _ [VarDecl _ (Id _ "s") (Just (NewExpr _ (VarRef _ (Id _ "GMarker")) [NewExpr _ (VarRef _ (Id _ "GLatLng")) ss, ObjectLit _ [(PropId _ (Id _ "title"), StringLit _ "start")]]))]) = Just ss
-    startVar _ = Nothing
+
+    getCoord name = markerCoord . concat . concatMap (mapMaybe (coordVar name))
+    coordVar name (VarDeclStmt _ [VarDecl _ (Id _ _name) (Just (NewExpr _ (VarRef _ (Id _ "GMarker")) [NewExpr _ (VarRef _ (Id _ "GLatLng")) ss, ObjectLit _ [(PropId _ (Id _ "title"), StringLit _ _)]]))]) | name == _name = Just ss
+    coordVar _ _ = Nothing
 
     -- [NumLit _ 46.126683333333,PrefixExpr _ PrefixMinus (NumLit _ 121.51863333333)]
     markerCoord :: Show a => [Expression a] -> Coord
