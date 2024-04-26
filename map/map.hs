@@ -1,16 +1,17 @@
 {-# LANGUAGE DerivingStrategies, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings #-}
 
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
-import Data.Text qualified as T (strip, pack)
+import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
 import Data.Text.IO qualified as T (readFile)
 import Language.ECMAScript3
 import System.Environment (getArgs)
 import System.FilePath (takeFileName)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
+import Text.HTML.TagSoup.Match (tagComment)
 
 -- | WGS84 geographic coordinate.
 data Coord = Coord { lat :: !Double, long :: !Double }
@@ -19,6 +20,10 @@ data Coord = Coord { lat :: !Double, long :: !Double }
 -- | Information about a Kitya's track on the map.
 data Map = Map
   { filename :: !FilePath
+  -- ^ filename of the mirrored HTML file
+  , sourceMapFilename :: !FilePath
+  -- ^ filename of the source text file with map data, extracted from the source
+  -- URL, which is recorded by HTTrack
   , title :: !Text
   , start :: !Coord
   , finish :: !Coord
@@ -33,7 +38,8 @@ parseMapInfo f = do
       title = T.strip . innerText . take 2 . dropWhile (/= TagOpen "title" []) $ tags
       (start, finish, encodedPolylines) = extractTrack tags
       filename = takeFileName f
-  pure Map{filename, title, start, finish, encodedPolylines}
+      sourceMapFilename = extractSourceMapFilename tags
+  pure Map{filename, sourceMapFilename, title, start, finish, encodedPolylines}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -76,6 +82,13 @@ extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolylines def)
     encodedPointsVar (VarDeclStmt _ [VarDecl _ (Id _ name) (Just (StringLit _ t))])
       | "encodedPoints_" `isPrefixOf` name = Just t
     encodedPointsVar _ = Nothing
+
+extractSourceMapFilename :: [Tag Text] -> FilePath
+extractSourceMapFilename = getFilename . fromJust . find (tagComment ("Mirrored from " `T.isInfixOf`))
+  where
+    -- comment = " Mirrored from lj.karlson.ru/map/index.php?map=SmithRock.txt by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 11 Oct 2021 05:57:27 GMT "
+    getFilename (TagComment comment) = T.unpack . (!! 4) . T.split (\c -> c == ' ' || c == '=') $ comment
+    getFilename x = error $ "impossible tag: " <> show x
 
 main :: IO ()
 main = do
