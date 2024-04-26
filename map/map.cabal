@@ -5,5 +5,5 @@ build-type: Simple
 
 executable map
   main-is: map.hs
-  build-depends: base, language-ecmascript, tagsoup, text
+  build-depends: base, filepath, language-ecmascript, tagsoup, text
   ghc-options: -Wall -Werror=missing-methods -Werror=missing-fields -Wprepositive-qualified-module

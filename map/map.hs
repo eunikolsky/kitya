@@ -9,6 +9,7 @@ import Data.Text qualified as T (strip, pack)
 import Data.Text.IO qualified as T (readFile)
 import Language.ECMAScript3
 import System.Environment (getArgs)
+import System.FilePath (takeFileName)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
 
 -- | WGS84 geographic coordinate.
@@ -17,7 +18,8 @@ data Coord = Coord { lat :: !Double, long :: !Double }
 
 -- | Information about a Kitya's track on the map.
 data Map = Map
-  { title :: !Text
+  { filename :: !FilePath
+  , title :: !Text
   , start :: !Coord
   , finish :: !Coord
   , encodedPolylines :: !(NonEmpty Text)
@@ -30,7 +32,8 @@ parseMapInfo f = do
   let tags = parseTags t
       title = T.strip . innerText . take 2 . dropWhile (/= TagOpen "title" []) $ tags
       (start, finish, encodedPolylines) = extractTrack tags
-  pure Map{title, start, finish, encodedPolylines}
+      filename = takeFileName f
+  pure Map{filename, title, start, finish, encodedPolylines}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
