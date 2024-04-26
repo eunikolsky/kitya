@@ -1,12 +1,15 @@
 {-# LANGUAGE DerivingStrategies, ImportQualifiedPost, OverloadedStrings #-}
 
+import Data.List (isPrefixOf)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack)
 import Data.Text.IO qualified as T (readFile)
 import Language.ECMAScript3
 import System.Environment (getArgs)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
-import Data.Maybe (mapMaybe)
 
 -- | WGS84 geographic coordinate.
 data Coord = Coord { lat :: !Double, long :: !Double }
@@ -17,7 +20,7 @@ data Map = Map
   { title :: !Text
   , start :: !Coord
   , finish :: !Coord
-  , encodedPolyline :: !Text
+  , encodedPolylines :: !(NonEmpty Text)
   }
   deriving (Show)
 
@@ -26,8 +29,8 @@ parseMapInfo f = do
   t <- T.readFile f
   let tags = parseTags t
       title = T.strip . innerText . take 2 . dropWhile (/= TagOpen "title" []) $ tags
-      (start, finish, encodedPolyline) = extractTrack tags
-  pure Map{title, start, finish, encodedPolyline}
+      (start, finish, encodedPolylines) = extractTrack tags
+  pure Map{title, start, finish, encodedPolylines}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -42,8 +45,8 @@ parseJS = either (error . ("couldn't parse: " <>) . show) id . parse program ""
  - although with a varying number of `encodedPoints_*` definitions, so it's
  - fine to have a rigid parser; the files aren't going to change anyway
  -}
-extractTrack :: [Tag Text] -> (Coord, Coord, Text)
-extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolyline def)
+extractTrack :: [Tag Text] -> (Coord, Coord, NonEmpty Text)
+extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolylines def)
   where
     def = findTrackDefBlock . parseJS . getJSText $ tags
     findTrackDefBlock = concatMap (mapMaybe gBrowserIsCompatibleIf) . mapMaybe initializeFunc . unJavaScript
@@ -65,9 +68,10 @@ extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolyline def)
     evalExpr (PrefixExpr _ PrefixMinus (NumLit _ x)) = -x
     evalExpr u = error $ "unexpected expression " <> show u
 
-    getPolyline = T.pack . concat . concatMap (mapMaybe encodedPointsVar)
+    getPolylines = fromJust . NE.nonEmpty . fmap T.pack . concatMap (mapMaybe encodedPointsVar)
 
-    encodedPointsVar (VarDeclStmt _ [VarDecl _ (Id _ "encodedPoints_0") (Just (StringLit _ t))]) = Just t
+    encodedPointsVar (VarDeclStmt _ [VarDecl _ (Id _ name) (Just (StringLit _ t))])
+      | "encodedPoints_" `isPrefixOf` name = Just t
     encodedPointsVar _ = Nothing
 
 main :: IO ()
