@@ -36,11 +36,7 @@
 <div id="map" style="width: 100%; height: 100%;"></div>
 <script>
 
-	const map = L.map('map')
-		.fitBounds([
-			[48.06065,-121.41308333333],
-			[48.004783333333,-121.3447]
-		]);
+	const map = L.map('map');
 
 	const tiles = L.tileLayer('http://localhost:8080/tile/{z}/{x}/{y}.png', {
 		maxZoom: 19,
@@ -54,7 +50,7 @@
 	L.marker([48.05365, -121.41286666667], {icon: start, title:'start', riseOnHover:true}).addTo(map).bindPopup('start');
 	L.marker([48.053933333333, -121.41301666667], {icon: finish, title:'finish', riseOnHover:true}).addTo(map).bindPopup('finish');
 
-	const polylines = [
+	const encodedPolylines = [
 		'inhdHjm`dVAA@CBCNBFB@]FIWy@Hq@BUXQHOj@Sr@]PIMq@BC^OHk@ZENEE]DMLIXc@LiA@q@ZEJJ\
 VIVI@BFWDUBI@[g@}@SR_@NSSNOLq@Xy@RYm@Sg@Ie@\\c@j@CDKj@INCHEb@k@x@Or@a@p@]VMH\
 }@OQCEC{@Fa@\\E@Wf@]KO_AOg@Wa@YoAQ}@]e@Kc@[q@{@aA{@IkAMg@EiA[q@c@_@Sa@u@{@EMC\
@@ -113,9 +109,13 @@ AXM\\Wf@FDCd@C@IB_@`@g@NSl@q@\\WZBD]XHp@',
 		'wmhdHfj`dV@HEn@Ih@a@`@s@a@IAHHG@FFDC\\XDBOO'
 	];
 
-	polylines.forEach((polyline, idx) =>
-		L.Polyline.fromEncoded(polyline, {color:'#E600E6', opacity:0.7}).addTo(map).bindPopup(`path ${idx}`)
+	const polylines = encodedPolylines.map(polyline =>
+		L.Polyline.fromEncoded(polyline, {color:'#E600E6', opacity:0.7})
 	);
+	polylines.forEach((polyline, idx) => polyline.addTo(map).bindPopup(`path ${idx}`));
+
+  const bounds = polylines.map(p => p.getBounds()).reduce((acc, bounds) => acc.extend(bounds));
+  map.fitBounds(bounds);
 
 </script>
 
