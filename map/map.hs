@@ -3,7 +3,7 @@
 import Data.Aeson (ToJSON)
 import Data.Aeson.Encode.Pretty (Config(..), Indent(..), defConfig, encodePretty')
 import Data.ByteString.Lazy (ByteString)
-import Data.ByteString.Lazy qualified as BSL (putStr)
+import Data.ByteString.Lazy qualified as BSL (writeFile)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -119,4 +119,4 @@ main = do
   srcDir <- head <$> getArgs
   mapFiles <- listMapFiles srcDir
   maps <- traverse parseMapInfo mapFiles
-  BSL.putStr $ encode maps
+  BSL.writeFile "maps.json" $ encode maps
