@@ -6,7 +6,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.ByteString.Lazy qualified as BSL (writeFile)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
-import Data.List.NonEmpty qualified as NE
+import Data.List.NonEmpty qualified as NE (nonEmpty)
 import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
