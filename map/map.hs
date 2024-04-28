@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving #-}
 
-import Data.Aeson (ToJSON, encode)
+import Data.Aeson (ToJSON)
+import Data.Aeson.Encode.Pretty (Config(..), Indent(..), defConfig, encodePretty')
 import Data.ByteString.Lazy qualified as BSL (putStr)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
@@ -100,5 +101,6 @@ extractSourceMapFilename = getFilename . fromJust . find (tagComment ("Mirrored 
 main :: IO ()
 main = do
   srcFile <- head <$> getArgs
+  let conf = defConfig { confIndent = Spaces 2, confTrailingNewline = True }
   -- interesting, nothing is printed in `ghcid` if there is no `\n`
-  BSL.putStr . (<> "\n") . encode =<< parseMapInfo srcFile
+  BSL.putStr . encodePretty' conf =<< parseMapInfo srcFile
