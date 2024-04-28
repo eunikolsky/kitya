@@ -2,6 +2,7 @@
 
 import Data.Aeson (ToJSON)
 import Data.Aeson.Encode.Pretty (Config(..), Indent(..), defConfig, encodePretty')
+import Data.ByteString.Lazy (ByteString)
 import Data.ByteString.Lazy qualified as BSL (putStr)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
@@ -12,8 +13,9 @@ import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
 import Data.Text.IO qualified as T (readFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
+import System.Directory (listDirectory)
 import System.Environment (getArgs)
-import System.FilePath (takeFileName)
+import System.FilePath ((</>), takeFileName, takeExtension)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
 import Text.HTML.TagSoup.Match (tagComment)
 
@@ -98,9 +100,23 @@ extractSourceMapFilename = getFilename . fromJust . find (tagComment ("Mirrored 
     getFilename (TagComment comment) = T.unpack . (!! 4) . T.split (\c -> c == ' ' || c == '=') $ comment
     getFilename x = error $ "impossible tag: " <> show x
 
+listMapFiles :: FilePath -> IO [FilePath]
+listMapFiles dir = fmap (dir </>) . filter isMapFile <$> listDirectory dir
+  where
+    -- index0206.html
+    isMapFile f = all ($ f)
+      [ ("index" `isPrefixOf`)
+      , (== ".html") . takeExtension
+      , (== 14) . length
+      ]
+
+encode :: ToJSON a => a -> ByteString
+encode = encodePretty' conf
+  where conf = defConfig { confIndent = Spaces 2, confTrailingNewline = True }
+
 main :: IO ()
 main = do
-  srcFile <- head <$> getArgs
-  let conf = defConfig { confIndent = Spaces 2, confTrailingNewline = True }
-  -- interesting, nothing is printed in `ghcid` if there is no `\n`
-  BSL.putStr . encodePretty' conf =<< parseMapInfo srcFile
+  srcDir <- head <$> getArgs
+  mapFiles <- listMapFiles srcDir
+  maps <- traverse parseMapInfo mapFiles
+  BSL.putStr $ encode maps
