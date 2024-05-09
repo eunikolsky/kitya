@@ -19,11 +19,13 @@ const imageBasename = path.parse(htmlFile).name;
   });
   //await page.setExtraHTTPHeaders({referer: 'https://www.openstreetmap.org/'});
   await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0' });
-  await page.screenshot({path: `${imageBasename}@2x.png`});
+  let zoom = await page.evaluate('map.getZoom()');
+  await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
 
   /*await page.tap('[aria-label="Zoom out"]');
   await page.waitForNetworkIdle();
-  await page.screenshot({path: 'example_zoom@2x.png'});
+  zoom = await page.evaluate('map.getZoom()');
+  await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
 
   await page.tap('[aria-label="Zoom out"]');
   await page.waitForNetworkIdle();
