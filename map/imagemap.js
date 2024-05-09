@@ -17,19 +17,21 @@ const imageBasename = path.parse(htmlFile).name;
     height: 1050,
     deviceScaleFactor: 2,
   });
-  //await page.setExtraHTTPHeaders({referer: 'https://www.openstreetmap.org/'});
+
+  const getZoom = () => page.evaluate('map.getZoom()');
+  const saveScreenshot = async () => await page.screenshot({path: `${imageBasename}_${await getZoom()}@2x.png`});
+
   await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0' });
-  let zoom = await page.evaluate('map.getZoom()');
-  await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
+  await saveScreenshot();
 
-  /*await page.tap('[aria-label="Zoom out"]');
-  await page.waitForNetworkIdle();
-  zoom = await page.evaluate('map.getZoom()');
-  await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
+  const numScreenshots = 5;
 
-  await page.tap('[aria-label="Zoom out"]');
-  await page.waitForNetworkIdle();
-  await page.screenshot({path: 'example_zoom2@2x.png'});*/
+  // there was already one screenshot above
+  for (const _ of Array.from(Array(numScreenshots - 1).keys())) {
+    await page.tap('[aria-label="Zoom out"]');
+    await page.waitForNetworkIdle();
+    await saveScreenshot();
+  };
 
   await browser.close();
 })();
