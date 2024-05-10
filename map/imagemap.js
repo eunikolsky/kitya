@@ -13,15 +13,16 @@ const imageBasename = path.parse(htmlFile).name;
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
   await page.setViewport({
-    width: 1680,
-    height: 1050,
-    deviceScaleFactor: 2,
+    // PocketBook 740 Color's display b/w resolution, although color resolution is 3× less
+    width: 1872,
+    height: 1404,
+    deviceScaleFactor: 1,
   });
 
   const getZoom = () => page.evaluate('map.getZoom()');
   const saveScreenshot = async () => {
     const zoom = await getZoom();
-    await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
+    await page.screenshot({path: `${imageBasename}_${zoom}.png`});
     console.log(`saved screenshot at zoom ${zoom}`);
   }
 
