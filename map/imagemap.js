@@ -19,7 +19,11 @@ const imageBasename = path.parse(htmlFile).name;
   });
 
   const getZoom = () => page.evaluate('map.getZoom()');
-  const saveScreenshot = async () => await page.screenshot({path: `${imageBasename}_${await getZoom()}@2x.png`});
+  const saveScreenshot = async () => {
+    const zoom = await getZoom();
+    await page.screenshot({path: `${imageBasename}_${zoom}@2x.png`});
+    console.log(`saved screenshot at zoom ${zoom}`);
+  }
 
   await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0' });
   await saveScreenshot();
