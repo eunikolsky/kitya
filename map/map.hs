@@ -16,7 +16,7 @@ import Data.Text.IO qualified as T (readFile, writeFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
 import Prelude hiding (map)
-import System.Directory (listDirectory)
+import System.Directory (createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
 import System.FilePath ((</>), takeFileName, takeExtension)
@@ -133,14 +133,19 @@ generateMapFile template map@Map{title, filename} = do
       contents = T.replace "$MAP$" mapJSON . T.replace "$TITLE$" title $ template
   T.writeFile filename contents
 
+ensureDir :: FilePath -> IO ()
+ensureDir = createDirectoryIfMissing createParents
+  where createParents = True
+
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["--extract", srcDir] -> do
+    ["--extract", srcDir, "--out", outDir] -> do
       mapFiles <- listMapFiles srcDir
       maps <- traverse parseMapInfo mapFiles
-      BSL.writeFile "maps.json" $ encode maps
+      ensureDir outDir
+      BSL.writeFile (outDir </> "maps.json") $ encode maps
 
     ["--create", mapsFile] -> do
       maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
@@ -149,6 +154,6 @@ main = do
 
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile)"]
+      putStrLn $ mconcat [name, " (--extract srcDir --out outDir|--create mapsFile)"]
 
-    xs -> die $ "unknown options " <> show xs
+    xs -> die $ "can't parse options " <> show xs
