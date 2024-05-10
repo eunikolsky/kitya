@@ -37,7 +37,7 @@
 <script>
   const info = $MAP$;
 
-	const map = L.map('map');
+  const map = L.map('map', { fadeAnimation: false, zoomAnimation: false });
 
 	const tiles = L.tileLayer('http://localhost:8080/tile/{z}/{x}/{y}.png', {
 		maxZoom: 19,
