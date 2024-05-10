@@ -24,15 +24,17 @@ const imageBasename = path.parse(htmlFile).name;
     const zoom = await getZoom();
     await page.screenshot({path: `${imageBasename}_${zoom}.png`});
     console.log(`saved screenshot at zoom ${zoom}`);
+    return zoom;
   }
 
   await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0' });
-  await saveScreenshot();
+  const initialZoom = await saveScreenshot();
 
-  const numScreenshots = 5;
+  const minZoom = 10;
+  // enough zoomed out screenshots to end at zoom level 10
+  const numScreenshots = initialZoom - minZoom;
 
-  // there was already one screenshot above
-  for (const _ of Array.from(Array(numScreenshots - 1).keys())) {
+  for (const _ of Array.from(Array(numScreenshots).keys())) {
     await page.tap('[aria-label="Zoom out"]');
     await page.waitForNetworkIdle();
     await saveScreenshot();
