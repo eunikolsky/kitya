@@ -1,29 +1,36 @@
-{-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving, TypeApplications #-}
 
-import Data.Aeson (ToJSON)
+import Control.Monad (forM_)
+import Data.Aeson (FromJSON, ToJSON, eitherDecodeFileStrict)
 import Data.Aeson.Encode.Pretty (Config(..), Indent(..), defConfig, encodePretty')
 import Data.ByteString.Lazy (ByteString)
-import Data.ByteString.Lazy qualified as BSL (writeFile)
+import Data.ByteString.Lazy qualified as BSL (writeFile, toStrict)
 import Data.List (isPrefixOf, find)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE (nonEmpty)
 import Data.Maybe (mapMaybe, fromJust)
 import Data.Text (Text)
-import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split)
-import Data.Text.IO qualified as T (readFile)
+import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split, replace)
+import Data.Text.Encoding (decodeUtf8)
+import Data.Text.IO qualified as T (readFile, writeFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
+import Prelude hiding (map)
 import System.Directory (listDirectory)
-import System.Environment (getArgs)
+import System.Environment (getArgs, getProgName)
+import System.Exit (die)
 import System.FilePath ((</>), takeFileName, takeExtension)
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
 import Text.HTML.TagSoup.Match (tagComment)
 
 -- | WGS84 geographic coordinate.
-data Coord = Coord { lat :: !Double, long :: !Double }
+-- `lng` instead of `long` to be compatible with leafletjs's `LatLng` constructor
+-- https://leafletjs.com/reference.html#latlng
+data Coord = Coord { lat :: !Double, lng :: !Double }
   deriving (Show, Generic)
 
 deriving via Generically Coord instance ToJSON Coord
+deriving via Generically Coord instance FromJSON Coord
 
 -- | Information about a Kitya's track on the map.
 data Map = Map
@@ -40,6 +47,7 @@ data Map = Map
   deriving (Show, Generic)
 
 deriving via Generically Map instance ToJSON Map
+deriving via Generically Map instance FromJSON Map
 
 parseMapInfo :: FilePath -> IO Map
 parseMapInfo f = do
@@ -80,7 +88,7 @@ extractTrack tags = (getCoord "s" def, getCoord "f" def, getPolylines def)
 
     -- [NumLit _ 46.126683333333,PrefixExpr _ PrefixMinus (NumLit _ 121.51863333333)]
     markerCoord :: Show a => [Expression a] -> Coord
-    markerCoord [latE, longE] = Coord{lat=evalExpr latE, long=evalExpr longE}
+    markerCoord [latE, longE] = Coord{lat=evalExpr latE, lng=evalExpr longE}
     markerCoord u = error $ "unexpected coords " <> show u
 
     evalExpr (NumLit _ x) = x
@@ -114,9 +122,33 @@ encode :: ToJSON a => a -> ByteString
 encode = encodePretty' conf
   where conf = defConfig { confIndent = Spaces 2, confTrailingNewline = True }
 
+removeNewlines :: Map -> Map
+removeNewlines map@Map{encodedPolylines} =
+  map { encodedPolylines = removeNewline <$> encodedPolylines }
+  where removeNewline = T.replace "\n" ""
+
+generateMapFile :: Text -> Map -> IO ()
+generateMapFile template map@Map{title, filename} = do
+  let mapJSON = decodeUtf8 . BSL.toStrict . encode $ removeNewlines map
+      contents = T.replace "$MAP$" mapJSON . T.replace "$TITLE$" title $ template
+  T.writeFile filename contents
+
 main :: IO ()
 main = do
-  srcDir <- head <$> getArgs
-  mapFiles <- listMapFiles srcDir
-  maps <- traverse parseMapInfo mapFiles
-  BSL.writeFile "maps.json" $ encode maps
+  args <- getArgs
+  case args of
+    ["--extract", srcDir] -> do
+      mapFiles <- listMapFiles srcDir
+      maps <- traverse parseMapInfo mapFiles
+      BSL.writeFile "maps.json" $ encode maps
+
+    ["--create", mapsFile] -> do
+      maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
+      template <- T.readFile "template.html"
+      forM_ maps $ generateMapFile template
+
+    ["--help"] -> do
+      name <- getProgName
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile)"]
+
+    xs -> die $ "unknown options " <> show xs
