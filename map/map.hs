@@ -16,7 +16,7 @@ import Data.Text.IO qualified as T (readFile, writeFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
 import Prelude hiding (map)
-import System.Directory (createDirectoryIfMissing, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
 import System.FilePath ((</>), takeFileName, takeExtension)
@@ -127,15 +127,21 @@ removeNewlines map@Map{encodedPolylines} =
   map { encodedPolylines = removeNewline <$> encodedPolylines }
   where removeNewline = T.replace "\n" ""
 
-generateMapFile :: Text -> Map -> IO ()
-generateMapFile template map@Map{title, filename} = do
+generateMapFile :: FilePath -> Text -> Map -> IO ()
+generateMapFile outDir template map@Map{title, filename} = do
   let mapJSON = decodeUtf8 . BSL.toStrict . encode $ removeNewlines map
       contents = T.replace "$MAP$" mapJSON . T.replace "$TITLE$" title $ template
-  T.writeFile filename contents
+  T.writeFile (outDir </> filename) contents
 
 ensureDir :: FilePath -> IO ()
 ensureDir = createDirectoryIfMissing createParents
   where createParents = True
+
+copyMapFiles :: FilePath -> IO ()
+copyMapFiles outDir = do
+  let from = "map_files"
+  files <- listDirectory from
+  forM_ files $ \f -> copyFile (from </> f) (outDir </> f)
 
 main :: IO ()
 main = do
@@ -147,13 +153,15 @@ main = do
       ensureDir outDir
       BSL.writeFile (outDir </> "maps.json") $ encode maps
 
-    ["--create", mapsFile] -> do
+    ["--create", mapsFile, "--out", outDir] -> do
       maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
       template <- T.readFile "template.html"
-      forM_ maps $ generateMapFile template
+      ensureDir outDir
+      copyMapFiles outDir
+      forM_ maps $ generateMapFile outDir template
 
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir --out outDir|--create mapsFile)"]
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile) --out outDir"]
 
     xs -> die $ "can't parse options " <> show xs
