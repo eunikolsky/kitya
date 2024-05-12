@@ -32,8 +32,8 @@ const imageBasename = path.parse(htmlFile).name;
   await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0', timeout });
   const initialZoom = await saveScreenshot();
 
-  const minZoom = 10;
-  // enough zoomed out screenshots to end at zoom level 10
+  const minZoom = 9;
+  // enough zoomed out screenshots to end at minZoom
   const numScreenshots = initialZoom - minZoom;
 
   for (const _ of Array.from(Array(numScreenshots).keys())) {
