@@ -27,7 +27,9 @@ const imageBasename = path.parse(htmlFile).name;
     return zoom;
   }
 
-  await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0' });
+  const timeout = 2 * 60 * 1000;
+
+  await page.goto(`file:${htmlFile}`, { waitUntil: 'networkidle0', timeout });
   const initialZoom = await saveScreenshot();
 
   const minZoom = 10;
@@ -36,7 +38,7 @@ const imageBasename = path.parse(htmlFile).name;
 
   for (const _ of Array.from(Array(numScreenshots).keys())) {
     await page.tap('[aria-label="Zoom out"]');
-    await page.waitForNetworkIdle();
+    await page.waitForNetworkIdle({ timeout });
     await saveScreenshot();
   };
 
