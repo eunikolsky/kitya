@@ -441,13 +441,14 @@ treeize maxLevel = lforest 0
     lforest level xs = ltree level <$> sublistsFromLevel level xs
 
     ltree :: Int -> [LXmlTree] -> XmlTree
-    ltree level xs =
-      let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
-          nextLevel = level + 1
-          nestedLevels = if nextLevel <= maxLevel
-            then lforest nextLevel rest
-            else []
-      in XN.NTree root' $ children <> nestedLevels
+    ltree level xs = case uncons xs of
+      Just (LXmlTree _ (XN.NTree root' children), rest) ->
+        let nextLevel = level + 1
+            nestedLevels = if nextLevel <= maxLevel
+              then lforest nextLevel rest
+              else []
+        in XN.NTree root' $ children <> nestedLevels
+      Nothing -> error $ mconcat ["treeize: unexpected empty LXmlTree at level ", show level]
 
 levelFromStyle :: String -> Level
 levelFromStyle = fromMargin . read @Int . takeWhile isDigit . dropWhile (not . isDigit)
