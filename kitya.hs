@@ -72,25 +72,28 @@ createBooks Args { arOutputDir = outputDir, arInputArgs } = do
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forYearMonth arInputArgs $ \(year, month) -> do
+  forYearMonth arInputArgs $ \ym@(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
     amendHTMLs posts
     generateIndex posts
 
-    nowString <- getNowString
-    bookNumber <- readIORef bookNumberRef
-
-    createEpub outputDir $ EpubSettings
-      { yearMonth = year <> "-" <> month
-      , nowString
-      , bookNumber
-      }
-
-    modifyIORef' bookNumberRef (+ 1)
+    generateEpub bookNumberRef ym
 
   where
+    generateEpub bookNumberRef (year, month) = do
+      nowString <- getNowString
+      bookNumber <- readIORef bookNumberRef
+
+      createEpub outputDir $ EpubSettings
+        { yearMonth = year <> "-" <> month
+        , nowString
+        , bookNumber
+        }
+
+      modifyIORef' bookNumberRef (+ 1)
+
     -- picks between the requested year-month or all the discovered ones
     forYearMonth Nothing = forEachYearMonth
     forYearMonth (Just (InputArgs ym)) = forGivenYearMonth ym
