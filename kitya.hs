@@ -39,12 +39,12 @@ import qualified Text.XML.HXT.DOM.XmlNode as XN
 main :: IO ()
 main = getProgramArgs >>= createBooks
 
-newtype InputArgs = InputArgs { iaDate :: Maybe (Year, Month) }
+newtype InputArgs = InputArgs { iaDate :: (Year, Month) }
 
 -- | The program's arguments.
 data Args = Args
   { arOutputDir :: !FilePath
-  , arInputArgs :: !InputArgs
+  , arInputArgs :: !(Maybe InputArgs)
   }
 
 getProgramArgs :: IO Args
@@ -54,25 +54,25 @@ getProgramArgs = do
     ["-i", year, month, arOutputDir] -> do
       exists <- doesDirectoryExist arOutputDir
       unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir, arInputArgs = InputArgs $ Just (year, month) }
+      pure $ Args { arOutputDir, arInputArgs = Just $ InputArgs (year, month) }
 
     [arOutputDir] -> do
       exists <- doesDirectoryExist arOutputDir
       unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir, arInputArgs = InputArgs Nothing }
+      pure $ Args { arOutputDir, arInputArgs = Nothing }
 
     _ -> die "Usage: kitya [-i <YEAR> <MONTH>] <OUTPUT_DIR>"
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir = outputDir, arInputArgs = InputArgs iaDate } = do
+createBooks Args { arOutputDir = outputDir, arInputArgs } = do
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forYearMonth iaDate $ \(year, month) -> do
+  forYearMonth arInputArgs $ \(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
@@ -93,7 +93,7 @@ createBooks Args { arOutputDir = outputDir, arInputArgs = InputArgs iaDate } = d
   where
     -- picks between the requested year-month or all the discovered ones
     forYearMonth Nothing = forEachYearMonth
-    forYearMonth (Just ym) = forGivenYearMonth ym
+    forYearMonth (Just (InputArgs ym)) = forGivenYearMonth ym
 
     amendHTMLs posts =
       let postPairs = adjacentPairs posts
