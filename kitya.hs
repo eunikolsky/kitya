@@ -62,12 +62,16 @@ argsP = Args
 getProgramArgs :: IO Args
 getProgramArgs = do
   let opts = info (argsP <**> helper) fullDesc
-  args@Args{arOutputDir} <- execParser opts
+  args <- execParser opts
 
-  exists <- doesDirectoryExist arOutputDir
-  unless exists $ createDirectory arOutputDir
+  ensureDirectory $ arOutputDir args
 
   pure args
+
+ensureDirectory :: FilePath -> IO ()
+ensureDirectory d = do
+  exists <- doesDirectoryExist d
+  unless exists $ createDirectory d
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
