@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process --ghc-options=-hide-all-packages
+-- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process,optparse-applicative --ghc-options=-hide-all-packages
 
 -- note: add this later before running for real: --optimize
 
@@ -22,14 +22,13 @@ import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDeli
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (utcToLocalZonedTime)
+import Options.Applicative
 import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
 import Text.XML.HXT.Core
 import System.Directory (createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
-import System.Environment (getArgs)
-import System.Exit (die)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
 import qualified Data.Text.Lazy as TL (unpack)
@@ -41,28 +40,34 @@ main = getProgramArgs >>= createBooks
 
 newtype InputArgs = InputArgs { iaDate :: (Year, Month) }
 
+parseInputArgs :: String -> InputArgs
+parseInputArgs yearMonth =
+  let (year, month) = second tail $ span (/= '/') yearMonth
+  in InputArgs (year, month)
+
 -- | The program's arguments.
 data Args = Args
-  { arOutputDir :: !FilePath
-  , arInputArgs :: !(Maybe InputArgs)
+  { arInputArgs :: !(Maybe InputArgs)
+  , arOutputDir :: !FilePath
   }
+
+inputArgsP :: Parser InputArgs
+inputArgsP = parseInputArgs <$> strOption (short 'i' <> metavar "YEAR/MONTH")
+
+argsP :: Parser Args
+argsP = Args
+  <$> optional inputArgsP
+  <*> argument str (metavar "OUTPUT_DIR")
 
 getProgramArgs :: IO Args
 getProgramArgs = do
-  args <- getArgs
-  case args of
-    ["-i", yearMonth, arOutputDir] -> do
-      exists <- doesDirectoryExist arOutputDir
-      unless exists $ createDirectory arOutputDir
-      let (year, month) = second tail $ span (/= '/') yearMonth
-      pure $ Args { arOutputDir, arInputArgs = Just $ InputArgs (year, month) }
+  let opts = info (argsP <**> helper) fullDesc
+  args@Args{arOutputDir} <- execParser opts
 
-    [arOutputDir] -> do
-      exists <- doesDirectoryExist arOutputDir
-      unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir, arInputArgs = Nothing }
+  exists <- doesDirectoryExist arOutputDir
+  unless exists $ createDirectory arOutputDir
 
-    _ -> die "Usage: kitya [-i <YEAR>/<MONTH>] <OUTPUT_DIR>"
+  pure args
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
