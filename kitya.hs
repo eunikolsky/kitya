@@ -12,7 +12,7 @@
 module Kitya where
 
 import Control.Exception (bracket, finally)
-import Control.Monad (filterM, unless, void)
+import Control.Monad (filterM, forM_, unless, void)
 import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
@@ -27,7 +27,7 @@ import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
 import Text.XML.HXT.Core
-import System.Directory (createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
@@ -38,12 +38,13 @@ import qualified Text.XML.HXT.DOM.XmlNode as XN
 main :: IO ()
 main = getProgramArgs >>= createBooks
 
-newtype InputArgs = InputArgs { iaDate :: (Year, Month) }
+data InputArgs = InputArgs
+  { iaDate :: !(Year, Month)
+  , iaProcessOnly :: !Bool
+  }
 
-parseInputArgs :: String -> InputArgs
-parseInputArgs yearMonth =
-  let (year, month) = second tail $ span (/= '/') yearMonth
-  in InputArgs (year, month)
+parseYearMonthArg :: String -> (Year, Month)
+parseYearMonthArg = second tail . span (/= '/')
 
 -- | The program's arguments.
 data Args = Args
@@ -52,7 +53,9 @@ data Args = Args
   }
 
 inputArgsP :: Parser InputArgs
-inputArgsP = parseInputArgs <$> strOption (short 'i' <> metavar "YEAR/MONTH")
+inputArgsP = InputArgs
+  <$> (parseYearMonthArg <$> strOption (short 'i' <> metavar "YEAR/MONTH"))
+  <*> switch (long "process-only")
 
 argsP :: Parser Args
 argsP = Args
@@ -82,14 +85,16 @@ createBooks Args { arOutputDir = outputDir, arInputArgs } = do
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forYearMonth arInputArgs $ \ym@(year, month) -> do
+  forYearMonth (iaDate <$> arInputArgs) $ \ym@(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
     amendHTMLs posts
     generateIndex posts
 
-    generateEpub bookNumberRef ym
+    if maybe False iaProcessOnly arInputArgs
+      then copyCWDFiles outputDir
+      else generateEpub bookNumberRef ym
 
   where
     generateEpub bookNumberRef (year, month) = do
@@ -106,12 +111,20 @@ createBooks Args { arOutputDir = outputDir, arInputArgs } = do
 
     -- picks between the requested year-month or all the discovered ones
     forYearMonth Nothing = forEachYearMonth
-    forYearMonth (Just (InputArgs ym)) = forGivenYearMonth ym
+    forYearMonth (Just ym) = forGivenYearMonth ym
 
     amendHTMLs posts =
       let postPairs = adjacentPairs posts
       in for_ postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML file next
+
+-- | Copies all files (assuming no directories) in the current working directory
+-- to the given directory.
+copyCWDFiles :: FilePath -> IO ()
+copyCWDFiles dir = do
+  files <- listDirectory "."
+  forM_ files $ \file ->
+    copyFileWithMetadata file (dir </> file)
 
 type Year = String
 type Month = String
