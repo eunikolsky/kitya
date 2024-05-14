@@ -63,13 +63,9 @@ argsP = Args
   <*> argument str (metavar "OUTPUT_DIR")
 
 getProgramArgs :: IO Args
-getProgramArgs = do
+getProgramArgs =
   let opts = info (argsP <**> helper) fullDesc
-  args <- execParser opts
-
-  ensureDirectory $ arOutputDir args
-
-  pure args
+  in execParser opts
 
 ensureDirectory :: FilePath -> IO ()
 ensureDirectory d = do
@@ -79,6 +75,8 @@ ensureDirectory d = do
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
 createBooks Args { arOutputDir = outputDir, arInputArgs } = do
+  ensureDirectory outputDir
+
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
