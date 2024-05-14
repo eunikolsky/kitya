@@ -51,9 +51,10 @@ getProgramArgs :: IO Args
 getProgramArgs = do
   args <- getArgs
   case args of
-    ["-i", year, month, arOutputDir] -> do
+    ["-i", yearMonth, arOutputDir] -> do
       exists <- doesDirectoryExist arOutputDir
       unless exists $ createDirectory arOutputDir
+      let (year, month) = second tail $ span (/= '/') yearMonth
       pure $ Args { arOutputDir, arInputArgs = Just $ InputArgs (year, month) }
 
     [arOutputDir] -> do
@@ -61,7 +62,7 @@ getProgramArgs = do
       unless exists $ createDirectory arOutputDir
       pure $ Args { arOutputDir, arInputArgs = Nothing }
 
-    _ -> die "Usage: kitya [-i <YEAR> <MONTH>] <OUTPUT_DIR>"
+    _ -> die "Usage: kitya [-i <YEAR>/<MONTH>] <OUTPUT_DIR>"
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
