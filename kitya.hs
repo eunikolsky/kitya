@@ -27,7 +27,7 @@ import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
 import Text.XML.HXT.Core
-import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
@@ -74,7 +74,9 @@ ensureDirectory d = do
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir = outputDir, arInputArgs } = do
+createBooks Args { arOutputDir, arInputArgs } = do
+  -- the path needs to be absolute because we'll be changing the CWD below
+  outputDir <- makeAbsolute arOutputDir
   ensureDirectory outputDir
 
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
@@ -92,10 +94,10 @@ createBooks Args { arOutputDir = outputDir, arInputArgs } = do
 
     if maybe False iaProcessOnly arInputArgs
       then copyCWDFiles outputDir
-      else generateEpub bookNumberRef ym
+      else generateEpub bookNumberRef outputDir ym
 
   where
-    generateEpub bookNumberRef (year, month) = do
+    generateEpub bookNumberRef outputDir (year, month) = do
       nowString <- getNowString
       bookNumber <- readIORef bookNumberRef
 
