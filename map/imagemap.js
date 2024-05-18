@@ -10,6 +10,12 @@ const { execFileSync } = require('node:child_process');
 const htmlFile = path.join(process.cwd(), process.argv[2]);
 const imageBasename = path.parse(htmlFile).name;
 
+// why don't standard libraries have simple, yet powerful high-level functions
+// like this?!
+Number.prototype.noLessThan = function(x) {
+  return Math.max(this, x);
+}
+
 const screenshotMap = async ({ width, height, isGrayscale }) => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
@@ -37,7 +43,7 @@ const screenshotMap = async ({ width, height, isGrayscale }) => {
 
   const minZoom = 9;
   // enough zoomed out screenshots to end at minZoom
-  const numScreenshots = initialZoom - minZoom;
+  const numScreenshots = (initialZoom - minZoom).noLessThan(4);
 
   for (const _ of Array.from(Array(numScreenshots).keys())) {
     await page.tap('[aria-label="Zoom out"]');
