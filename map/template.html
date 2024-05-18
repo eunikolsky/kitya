@@ -52,7 +52,7 @@
 	L.marker(L.latLng(info.finish), {icon: finish, title:'finish', riseOnHover:true}).addTo(map).bindPopup('finish');
 
 	const polylines = info.encodedPolylines.map(polyline =>
-		L.Polyline.fromEncoded(polyline, {color:'#E600E6', opacity:0.7})
+		L.Polyline.fromEncoded(polyline, {color:'black', opacity:0.7})
 	);
 	polylines.forEach((polyline, idx) => polyline.addTo(map).bindPopup(`path ${idx}`));
 
