@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process --ghc-options=-hide-all-packages
+-- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process,optparse-applicative --ghc-options=-hide-all-packages
 
 -- note: add this later before running for real: --optimize
 
@@ -12,7 +12,7 @@
 module Kitya where
 
 import Control.Exception (bracket, finally)
-import Control.Monad (filterM, unless, void)
+import Control.Monad (filterM, forM_, unless, void)
 import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
@@ -22,14 +22,13 @@ import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDeli
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (utcToLocalZonedTime)
+import Options.Applicative
 import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
 import Text.XML.HXT.Core
-import System.Directory (createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
-import System.Environment (getArgs)
-import System.Exit (die)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
 import qualified Data.Text.Lazy as TL (unpack)
@@ -39,56 +38,77 @@ import qualified Text.XML.HXT.DOM.XmlNode as XN
 main :: IO ()
 main = getProgramArgs >>= createBooks
 
--- | The program's arguments.
-data Args = Args
-  { arOutputDir :: !FilePath
-  , arInputDate :: !(Maybe (Year, Month))
+data InputArgs = InputArgs
+  { iaDate :: !(Year, Month)
+  , iaProcessOnly :: !Bool
   }
 
+parseYearMonthArg :: String -> (Year, Month)
+parseYearMonthArg = second tail . span (/= '/')
+
+-- | The program's arguments.
+data Args = Args
+  { arInputArgs :: !(Maybe InputArgs)
+  , arOutputDir :: !FilePath
+  }
+
+inputArgsP :: Parser InputArgs
+inputArgsP = InputArgs
+  <$> (parseYearMonthArg <$> strOption (short 'i' <> metavar "YEAR/MONTH"))
+  <*> switch (long "process-only")
+
+argsP :: Parser Args
+argsP = Args
+  <$> optional inputArgsP
+  <*> argument str (metavar "OUTPUT_DIR")
+
 getProgramArgs :: IO Args
-getProgramArgs = do
-  args <- getArgs
-  case args of
-    ["-i", year, month, arOutputDir] -> do
-      exists <- doesDirectoryExist arOutputDir
-      unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir, arInputDate = Just (year, month) }
+getProgramArgs =
+  let opts = info (argsP <**> helper) fullDesc
+  in execParser opts
 
-    [arOutputDir] -> do
-      exists <- doesDirectoryExist arOutputDir
-      unless exists $ createDirectory arOutputDir
-      pure $ Args { arOutputDir, arInputDate = Nothing }
-
-    _ -> die "Usage: kitya [-i <YEAR> <MONTH>] <OUTPUT_DIR>"
+ensureDirectory :: FilePath -> IO ()
+ensureDirectory d = do
+  exists <- doesDirectoryExist d
+  unless exists $ createDirectory d
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir = outputDir, arInputDate } = do
+createBooks Args { arOutputDir, arInputArgs } = do
+  -- the path needs to be absolute because we'll be changing the CWD below
+  outputDir <- makeAbsolute arOutputDir
+  ensureDirectory outputDir
+
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
   bookNumberRef <- newIORef 0
-  forYearMonth arInputDate $ \(year, month) -> do
+  forYearMonth (iaDate <$> arInputArgs) $ \ym@(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
     amendHTMLs posts
     generateIndex posts
 
-    nowString <- getNowString
-    bookNumber <- readIORef bookNumberRef
-
-    createEpub outputDir $ EpubSettings
-      { yearMonth = year <> "-" <> month
-      , nowString
-      , bookNumber
-      }
-
-    modifyIORef' bookNumberRef (+ 1)
+    if maybe False iaProcessOnly arInputArgs
+      then copyCWDFiles outputDir
+      else generateEpub bookNumberRef outputDir ym
 
   where
+    generateEpub bookNumberRef outputDir (year, month) = do
+      nowString <- getNowString
+      bookNumber <- readIORef bookNumberRef
+
+      createEpub outputDir $ EpubSettings
+        { yearMonth = year <> "-" <> month
+        , nowString
+        , bookNumber
+        }
+
+      modifyIORef' bookNumberRef (+ 1)
+
     -- picks between the requested year-month or all the discovered ones
     forYearMonth Nothing = forEachYearMonth
     forYearMonth (Just ym) = forGivenYearMonth ym
@@ -97,6 +117,14 @@ createBooks Args { arOutputDir = outputDir, arInputDate } = do
       let postPairs = adjacentPairs posts
       in for_ postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML file next
+
+-- | Copies all files (assuming no directories) in the current working directory
+-- to the given directory.
+copyCWDFiles :: FilePath -> IO ()
+copyCWDFiles dir = do
+  files <- listDirectory "."
+  forM_ files $ \file ->
+    copyFileWithMetadata file (dir </> file)
 
 type Year = String
 type Month = String
@@ -441,13 +469,14 @@ treeize maxLevel = lforest 0
     lforest level xs = ltree level <$> sublistsFromLevel level xs
 
     ltree :: Int -> [LXmlTree] -> XmlTree
-    ltree level xs =
-      let Just (LXmlTree _ (XN.NTree root' children), rest) = uncons xs
-          nextLevel = level + 1
-          nestedLevels = if nextLevel <= maxLevel
-            then lforest nextLevel rest
-            else []
-      in XN.NTree root' $ children <> nestedLevels
+    ltree level xs = case uncons xs of
+      Just (LXmlTree _ (XN.NTree root' children), rest) ->
+        let nextLevel = level + 1
+            nestedLevels = if nextLevel <= maxLevel
+              then lforest nextLevel rest
+              else []
+        in XN.NTree root' $ children <> nestedLevels
+      Nothing -> error $ mconcat ["treeize: unexpected empty LXmlTree at level ", show level]
 
 levelFromStyle :: String -> Level
 levelFromStyle = fromMargin . read @Int . takeWhile isDigit . dropWhile (not . isDigit)
