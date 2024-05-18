@@ -4,26 +4,29 @@ const puppeteer = require('puppeteer');
 
 const path = require('path');
 const process = require('process');
+const { execFileSync } = require('node:child_process');
 
 // `argv` = `[node, ../imagemap.js, indexfoo.html]`
 const htmlFile = path.join(process.cwd(), process.argv[2]);
 const imageBasename = path.parse(htmlFile).name;
 
-(async () => {
+const screenshotMap = async ({ width, height, isGrayscale }) => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
-  await page.setViewport({
-    // PocketBook 740 Color's display b/w resolution, although color resolution is 3× less
-    width: 1872,
-    height: 1404,
-    deviceScaleFactor: 1,
-  });
+  await page.setViewport({ width, height });
 
   const getZoom = () => page.evaluate('map.getZoom()');
   const saveScreenshot = async () => {
     const zoom = await getZoom();
-    await page.screenshot({path: `${imageBasename}_${zoom}.png`});
-    console.log(`saved screenshot at zoom ${zoom}`);
+    const suffix = isGrayscale ? '_gray' : '';
+    const file = `${imageBasename}_${zoom}${suffix}.png`;
+    await page.screenshot({path: file});
+
+    if (isGrayscale) {
+      execFileSync('mogrify', ['-set', 'colorspace', 'Gray', file]);
+    }
+
+    console.log(`saved screenshot at zoom ${zoom} to ${file}`);
     return zoom;
   }
 
@@ -43,4 +46,11 @@ const imageBasename = path.parse(htmlFile).name;
   };
 
   await browser.close();
-})();
+};
+
+// note: using these two commands w/o `await` unintentionally makes the
+// rendering process save two sets of screenshots in parallel!
+
+// PocketBook 740 Color's display b/w resolution, although color resolution is 3× less
+screenshotMap({ width: 1872, height: 1404, isGrayscale: true });
+screenshotMap({ width: 1872 / 3, height: 1404 / 3, isGrayscale: false });
