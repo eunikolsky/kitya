@@ -6,13 +6,14 @@
 -- note: the `--package` argument above doesn't work when loading the script into `stack ghci`; pass
 -- them manually, each after its own `--package` argument
 
-{-# LANGUAGE NamedFieldPuns, OverloadedStrings, RecordWildCards, TypeApplications #-}
+{-# LANGUAGE ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, RecordWildCards, TypeApplications #-}
 {-# OPTIONS_GHC -Wall -Werror=missing-methods -Werror=missing-fields #-}
 
 module Kitya where
 
 import Control.Exception (bracket, finally)
 import Control.Monad (filterM, forM_, unless, void)
+import Control.Monad qualified as M (when)
 import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (for_, traverse_)
@@ -27,7 +28,7 @@ import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
 import Text.XML.HXT.Core
-import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, doesFileExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, removeFile, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
@@ -123,8 +124,12 @@ createBooks Args { arOutputDir, arInputArgs } = do
 copyCWDFiles :: FilePath -> IO ()
 copyCWDFiles dir = do
   files <- listDirectory "."
-  forM_ files $ \file ->
-    copyFileWithMetadata file (dir </> file)
+  forM_ files $ \file -> do
+    let outFile = dir </> file
+    exists <- doesFileExist outFile
+    M.when exists $ removeFile outFile
+
+    copyFileWithMetadata file outFile
 
 type Year = String
 type Month = String
