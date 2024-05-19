@@ -220,6 +220,15 @@ readGarminJSON file = do
 
   pure Map{title, start, finish, filename, sourceMapFilename="", encodedPolylines=Nothing, polyline=Just polyline}
 
+listGarminMapFiles :: FilePath -> IO [FilePath]
+listGarminMapFiles dir = fmap (dir </>) . filter isMapFile <$> listDirectory dir
+  where
+    -- <digits>.json
+    isMapFile f = all ($ f)
+      [ all isDigit . takeBaseName
+      , (== ".json") . takeExtension
+      ]
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -241,15 +250,16 @@ main = do
       maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
       forM_ maps $ generateStaticMapFile outDir
 
-    ["--create-garmin", mapsFile, "--out", outDir] -> do
-      map <- readGarminJSON mapsFile
+    ["--create-garmin", mapsDir, "--out", outDir] -> do
       template <- T.readFile "template.html"
       ensureDir outDir
       copyMapFiles outDir
-      generateMapFile outDir template map
+
+      mapFiles <- listGarminMapFiles mapsDir
+      forM_ mapFiles $ generateMapFile outDir template <=< readGarminJSON
 
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile|--create-garmin mapsFile) --out outDir"]
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile|--create-garmin mapsDir) --out outDir"]
 
     xs -> die $ "can't parse options " <> show xs
