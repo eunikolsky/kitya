@@ -5,5 +5,5 @@ build-type: Simple
 
 executable map
   main-is: map.hs
-  build-depends: aeson, aeson-pretty, base, blaze-html, bytestring, directory, filepath, language-ecmascript, tagsoup, text
+  build-depends: aeson, aeson-pretty, base, blaze-html, bytestring, directory, filepath, language-ecmascript, microlens, microlens-aeson, tagsoup, text
   ghc-options: -Wall -Werror=missing-methods -Werror=missing-fields -Wprepositive-qualified-module
