@@ -9,7 +9,7 @@ import Data.Char (isDigit)
 import Data.List (isInfixOf, isPrefixOf, find, partition, sortOn, stripPrefix)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE (nonEmpty)
-import Data.Maybe (mapMaybe, fromJust)
+import Data.Maybe (mapMaybe, fromJust, fromMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split, replace)
@@ -17,7 +17,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO qualified as T (readFile, writeFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
-import Lens.Micro ((^?!), (^..))
+import Lens.Micro ((^?), (^..))
 import Lens.Micro.Aeson (_Double, _String, key, values)
 import Prelude hiding (map)
 import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
@@ -203,16 +203,20 @@ generateStaticMapFile outDir Map{title, filename, start, finish} = do
 readGarminJSON :: FilePath -> IO Map
 readGarminJSON file = do
   summary <- T.readFile file
-  let title = summary ^?! key "activityName" . _String
+  let ensureResult = fromMaybe . error . (<> " in " <> file)
+      title = ensureResult "no title" $ summary ^? key "activityName" . _String
       filename = takeBaseName file
 
   details <- T.readFile $ dropExtension file <> "_details.json"
-  let polylineValue = details ^?! key "geoPolylineDTO"
-      mkCoord p = Coord { lat = p ^?! key "lat" . _Double, lng = p ^?! key "lon" . _Double }
-      start = mkCoord $ polylineValue ^?! key "startPoint"
-      finish = mkCoord $ polylineValue ^?! key "endPoint"
+  let polylineValue = ensureResult "no polyline value" $ details ^? key "geoPolylineDTO"
+      mkCoord p = Coord
+        { lat = ensureResult "no lat" $ p ^? key "lat" . _Double
+        , lng = ensureResult "no lon" $ p ^? key "lon" . _Double
+        }
+      start = mkCoord . ensureResult "no start point" $ polylineValue ^? key "startPoint"
+      finish = mkCoord . ensureResult "no end point" $ polylineValue ^? key "endPoint"
 
-      polyline = mkCoord <$> polylineValue ^?! key "polyline" ^.. values
+      polyline = mkCoord <$> ensureResult "no polyline" (polylineValue ^? key "polyline") ^.. values
 
   pure Map{title, start, finish, filename, sourceMapFilename="", encodedPolylines=Nothing, polyline=Just polyline}
 
