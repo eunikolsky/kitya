@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<base target="_top">
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	
+	<title>$TITLE$</title>
+	
+    <!-- https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -->
+    <link rel="stylesheet" href="leaflet.css"/>
+    <!-- https://unpkg.com/leaflet@1.9.4/dist/leaflet.js -->
+    <script src="leaflet.js"></script>
+    <!-- https://raw.githubusercontent.com/jieter/Leaflet.encoded/c186c7c75d9d255abb8ac342ad52d4ac0c25ca02/Polyline.encoded.js -->
+    <script type="text/javascript" src="Polyline.encoded.js"></script>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+		}
+		.leaflet-container {
+			height: 100%;
+			width: 100%;
+			max-width: 100%;
+			max-height: 100%;
+		}
+	</style>
+
+	
+</head>
+<body>
+
+
+
+<div id="map" style="width: 100%; height: 100%;"></div>
+<script>
+  const info = $MAP$;
+
+  const map = L.map('map', { fadeAnimation: false, zoomAnimation: false });
+
+	const tiles = L.tileLayer('http://localhost:8080/tile/{z}/{x}/{y}.png', {
+		maxZoom: 19,
+		attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+	}).addTo(map);
+
+  // from https://ionic.io/ionicons
+  const start = L.icon({ iconUrl: 'battery-full.svg', iconSize: [27, 16] });
+  const finish = L.icon({ iconUrl: 'battery-half-outline.svg', iconSize: [27, 16] });
+
+	L.marker(L.latLng(info.start), {icon: start, title:'start', riseOnHover:true}).addTo(map).bindPopup('start');
+	L.marker(L.latLng(info.finish), {icon: finish, title:'finish', riseOnHover:true}).addTo(map).bindPopup('finish');
+
+	const polylines = info.encodedPolylines.map(polyline =>
+		L.Polyline.fromEncoded(polyline, {color:'#E600E6', opacity:0.7})
+	);
+	polylines.forEach((polyline, idx) => polyline.addTo(map).bindPopup(`path ${idx}`));
+
+  const bounds = polylines.map(p => p.getBounds()).reduce((acc, bounds) => acc.extend(bounds));
+  map.fitBounds(bounds);
+
+</script>
+
+
+
+</body>
+</html>
