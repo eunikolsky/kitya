@@ -1,14 +1,16 @@
 {-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving, TypeApplications #-}
 
-import Control.Monad (forM_)
+import Control.Monad ((<=<), forM_)
 import Data.Aeson (FromJSON, ToJSON, eitherDecodeFileStrict)
 import Data.Aeson.Encode.Pretty (Config(..), Indent(..), defConfig, encodePretty')
 import Data.ByteString.Lazy (ByteString)
 import Data.ByteString.Lazy qualified as BSL (writeFile, toStrict)
-import Data.List (isPrefixOf, find)
+import Data.Char (isDigit)
+import Data.List (isInfixOf, isPrefixOf, find, partition, sortOn, stripPrefix)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE (nonEmpty)
 import Data.Maybe (mapMaybe, fromJust)
+import Data.Ord (Down(..))
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split, replace)
 import Data.Text.Encoding (decodeUtf8)
@@ -19,9 +21,14 @@ import Prelude hiding (map)
 import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
-import System.FilePath ((</>), takeFileName, takeExtension)
+import System.FilePath ((</>), takeBaseName, takeFileName, takeExtension)
+import Text.Blaze.Html.Renderer.Pretty
+import Text.Blaze.Html5 ((!))
+import Text.Blaze.Html5 qualified as H
+import Text.Blaze.Html5.Attributes qualified as A
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
 import Text.HTML.TagSoup.Match (tagComment)
+import Text.Read (readMaybe)
 
 -- | WGS84 geographic coordinate.
 -- `lng` instead of `long` to be compatible with leafletjs's `LatLng` constructor
@@ -143,6 +150,51 @@ copyMapFiles outDir = do
   files <- listDirectory from
   forM_ files $ \f -> copyFile (from </> f) (outDir </> f)
 
+generateStaticMapFile :: FilePath -> Map -> IO ()
+generateStaticMapFile outDir Map{title, filename, start, finish} = do
+  let basename = takeBaseName filename
+  mapImages <- filterMapImages basename <$> listDirectory outDir
+  writeFile (outDir </> basename <> "_static.html") . renderHtml . staticHTML basename $ categorize mapImages
+
+  where
+    filterMapImages basename = filter (\f -> all ($ f) [(basename `isPrefixOf`), (== ".png") . takeExtension])
+
+    categorize = partition ("_gray" `isInfixOf`)
+
+    staticHTML basename (grayscaleImgs, colorImgs) = H.docTypeHtml $ do
+      let title' = "Карта: " <> title
+      H.head $ do
+        H.title $ H.toHtml title'
+        H.style "img {max-width: 100%}"
+      H.body $ do
+        H.h1 $ H.toHtml title'
+
+        showCoord "Start" start
+        showCoord "Finish" finish
+        pageBreak
+
+        images $ sortByZoomLevel basename grayscaleImgs
+        images $ sortByZoomLevel basename colorImgs
+
+    images = mapM_ $ \img -> H.p $ H.img ! A.src (H.toValue img)
+
+    sortByZoomLevel basename = sortOn
+      ( fmap Down
+      . readMaybe @Int
+      <=< fmap (takeWhile isDigit)
+      . stripPrefix (basename <> "_")
+      )
+
+    showCoord :: Text -> Coord -> H.Html
+    showCoord name c = H.p $ do
+      H.toHtml $ name <> ": "
+      H.code . H.toHtml $ mconcat [show $ lat c, ", ", show $ lng c]
+
+    -- this is needed so that koreader doesn't try to display the image on the
+    -- first page since it will be cut off, and the images are designed to fit
+    -- full screen
+    pageBreak = H.p ! A.style "page-break-after: always;" $ ""
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -160,8 +212,12 @@ main = do
       copyMapFiles outDir
       forM_ maps $ generateMapFile outDir template
 
+    ["--gen-static", mapsFile, "--out", outDir] -> do
+      maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
+      forM_ maps $ generateStaticMapFile outDir
+
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile) --out outDir"]
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile) --out outDir"]
 
     xs -> die $ "can't parse options " <> show xs
