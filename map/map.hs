@@ -204,7 +204,7 @@ readGarminJSON :: FilePath -> IO Map
 readGarminJSON file = do
   summary <- T.readFile file
   let ensureResult = fromMaybe . error . (<> " in " <> file)
-      title = ensureResult "no title" $ summary ^? key "activityName" . _String
+      title = fromMaybe "<no title>" $ summary ^? key "activityName" . _String
       filename = takeBaseName file
 
   details <- T.readFile $ dropExtension file <> "_details.json"
