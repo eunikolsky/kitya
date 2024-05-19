@@ -12,24 +12,27 @@
 module Kitya where
 
 import Control.Exception (bracket, finally)
-import Control.Monad (filterM, forM_, unless, void)
+import Control.Monad (filterM, forM_, join, unless, void)
 import Control.Monad qualified as M (when)
 import Data.Char (isDigit)
 import Data.Either (fromRight)
-import Data.Foldable (for_, traverse_)
+import Data.Foldable (traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (utcToLocalZonedTime)
+import Data.Traversable (for)
 import Options.Applicative
 import Prelude hiding (log)
 import Text.CSS.Parse
 import Text.CSS.Render
+import Text.XML.HXT.Arrow.XmlState.RunIOStateArrow (initialState)
+import Text.XML.HXT.Arrow.XmlState.TypeDefs (xioUserState)
 import Text.XML.HXT.Core
 import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, doesFileExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, removeFile, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
-import System.FilePath ((</>), (<.>), dropExtension, splitExtension)
+import System.FilePath ((</>), (<.>), dropExtension, splitExtension, takeBaseName)
 import System.Process (readProcess)
 import qualified Data.Text as T (pack)
 import qualified Data.Text.Lazy as TL (unpack)
@@ -50,6 +53,7 @@ parseYearMonthArg = second tail . span (/= '/')
 -- | The program's arguments.
 data Args = Args
   { arInputArgs :: !(Maybe InputArgs)
+  , arMapsDir :: !FilePath
   , arOutputDir :: !FilePath
   }
 
@@ -61,6 +65,7 @@ inputArgsP = InputArgs
 argsP :: Parser Args
 argsP = Args
   <$> optional inputArgsP
+  <*> strOption (long "maps-dir")
   <*> argument str (metavar "OUTPUT_DIR")
 
 getProgramArgs :: IO Args
@@ -75,10 +80,12 @@ ensureDirectory d = do
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir, arInputArgs } = do
+createBooks Args { arOutputDir, arMapsDir, arInputArgs } = do
   -- the path needs to be absolute because we'll be changing the CWD below
   outputDir <- makeAbsolute arOutputDir
   ensureDirectory outputDir
+
+  mapsDir <- makeAbsolute arMapsDir
 
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
@@ -90,8 +97,8 @@ createBooks Args { arOutputDir, arInputArgs } = do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
-    amendHTMLs posts
-    generateIndex posts
+    extraFiles <- amendHTMLs mapsDir posts
+    generateIndex $ posts <> extraFiles
 
     if maybe False iaProcessOnly arInputArgs
       then copyCWDFiles outputDir
@@ -114,10 +121,13 @@ createBooks Args { arOutputDir, arInputArgs } = do
     forYearMonth Nothing = forEachYearMonth
     forYearMonth (Just ym) = forGivenYearMonth ym
 
-    amendHTMLs posts =
+    amendHTMLs :: FilePath -> [FilePath] -> IO [MapFilename]
+    amendHTMLs mapsDir posts =
       let postPairs = adjacentPairs posts
-      in for_ postPairs $
-        \(file, next) -> withWriteableFile file $ amendHTML file next
+      in fmap join <$> for postPairs $
+        \(file, next) -> withWriteableFile file $ amendHTML mapsDir file next
+
+type MapFilename = FilePath
 
 -- | Copies all files (assuming no directories) in the current working directory
 -- to the given directory.
@@ -275,9 +285,10 @@ withWriteableFile fp f = bracket
 -- === XML processing
 
 -- Fucking A!
-amendHTML :: FilePath -> Maybe FilePath -> IO ()
-amendHTML file nextFile = void . runX $ load >>> process >>> save
+amendHTML :: FilePath -> FilePath -> Maybe FilePath -> IO [MapFilename]
+amendHTML mapsDir file nextFile = run $ load >>> process >>> save
   where
+    run a = xioUserState . fst <$> runIOSLA a (initialState []) undefined
     load = readDocument [withParseHTML yes, withWarnings no, withPreserveComment yes] file
     process = seqA
       [ movePostHeaderBeforeDate
@@ -296,6 +307,7 @@ amendHTML file nextFile = void . runX $ load >>> process >>> save
       -- warning: `removeCommentersProfileLinks` is tested to be after
       -- `removeLinksToImages` (but it may also work before)
       , removeCommentersProfileLinks
+      , useStaticMaps mapsDir
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
 
@@ -451,6 +463,20 @@ removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubjec
   where
     removeLinks = processTopDown $ getChildren `when` profileLink
     profileLink = hasName "a" >>> hasAttrValue "href" (".livejournal.com" `isInfixOf`)
+
+-- | Replaces all local map links (`…/map/index….html?blah`) with the
+-- corresponding local pre-rendered maps and collects them in the HXT's
+-- processing state.
+useStaticMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
+useStaticMaps baseDir = processTopDown $ changeMapLink `when` mapLink
+  where
+    changeMapLink = processAttrl $ changeMapText >>> saveMapText
+    changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . takeBaseName . takeWhile (/= '?')
+    -- note: this uses `getText`, not `getAttrValue0` because the latter doesn't
+    -- work, apparently due to `processAttrl`; however, I couldn't figure out
+    -- how to do this without `processAttrl`
+    saveMapText = perform $ deep getText >>> changeUserState (:)
+    mapLink = hasName "a" >>> hasAttrValue "href" ("/map/index" `isInfixOf`)
 
 
 type Level = Int
