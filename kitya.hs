@@ -468,30 +468,30 @@ removeCommentersProfileLinks = processTopDown $ removeLinks `when` commentSubjec
     removeLinks = processTopDown $ getChildren `when` profileLink
     profileLink = hasName "a" >>> hasAttrValue "href" (".livejournal.com" `isInfixOf`)
 
--- | Replaces all local map links (`…/map/index….html?blah`) with the
--- corresponding local pre-rendered maps and collects them in the HXT's
--- processing state.
-useStaticMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
-useStaticMaps baseDir = processTopDown $ changeMapLink `when` mapLink
+type ExtractMapId = String -> String
+
+_useStaticMaps :: String -> ExtractMapId -> FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
+_useStaticMaps urlMarker extractMapId baseDir = processTopDown $ changeMapLink `when` mapLink
   where
     changeMapLink = processAttrl $ changeMapText >>> saveMapText
-    changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . takeBaseName . takeWhile (/= '?')
+    changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . extractMapId
     -- note: this uses `getText`, not `getAttrValue0` because the latter doesn't
     -- work, apparently due to `processAttrl`; however, I couldn't figure out
     -- how to do this without `processAttrl`
     saveMapText = perform $ deep getText >>> changeUserState (:)
-    mapLink = hasName "a" >>> hasAttrValue "href" ("/map/index" `isInfixOf`)
+    mapLink = hasName "a" >>> hasAttrValue "href" (urlMarker `isInfixOf`)
+
+-- | Replaces all local map links (`…/map/index….html?blah`) with the
+-- corresponding local pre-rendered maps and collects them in the HXT's
+-- processing state.
+useStaticMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
+useStaticMaps = _useStaticMaps "/map/index" $ takeBaseName . takeWhile (/= '?')
 
 -- | Replaces all garmin map links (`http://connect.garmin.com/activity/id`)
 -- with the corresponding local pre-rendered maps and collects them in the HXT's
 -- processing state.
 useStaticGarminMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
-useStaticGarminMaps baseDir = processTopDown $ changeMapLink `when` mapLink
-  where
-    changeMapLink = processAttrl $ changeMapText >>> saveMapText
-    changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . dropWhile (not . isDigit)
-    saveMapText = perform $ deep getText >>> changeUserState (:)
-    mapLink = hasName "a" >>> hasAttrValue "href" ("connect.garmin.com/activity/" `isInfixOf`)
+useStaticGarminMaps = _useStaticMaps "connect.garmin.com/activity/" $ dropWhile (not . isDigit)
 
 
 type Level = Int
