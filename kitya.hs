@@ -54,6 +54,7 @@ parseYearMonthArg = second tail . span (/= '/')
 data Args = Args
   { arInputArgs :: !(Maybe InputArgs)
   , arMapsDir :: !FilePath
+  , arGarminMapsDir :: !FilePath
   , arOutputDir :: !FilePath
   }
 
@@ -66,6 +67,7 @@ argsP :: Parser Args
 argsP = Args
   <$> optional inputArgsP
   <*> strOption (long "maps-dir")
+  <*> strOption (long "garmin-maps-dir")
   <*> argument str (metavar "OUTPUT_DIR")
 
 getProgramArgs :: IO Args
@@ -80,12 +82,13 @@ ensureDirectory d = do
 
 -- |Main function to recursively go through the blog hierarchy and create epubs.
 createBooks :: Args -> IO ()
-createBooks Args { arOutputDir, arMapsDir, arInputArgs } = do
+createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
   -- the path needs to be absolute because we'll be changing the CWD below
   outputDir <- makeAbsolute arOutputDir
   ensureDirectory outputDir
 
   mapsDir <- makeAbsolute arMapsDir
+  garminMapsDir <- makeAbsolute arGarminMapsDir
 
   -- I tried using `StateT Int IO` at first, but it means I had to switch to
   -- `bracket` and `MonadUnliftIO` from `unliftio`, and the package doesn't
@@ -97,7 +100,7 @@ createBooks Args { arOutputDir, arMapsDir, arInputArgs } = do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
-    extraFiles <- amendHTMLs mapsDir posts
+    extraFiles <- amendHTMLs (mapsDir, garminMapsDir) posts
     generateIndex $ posts <> extraFiles
 
     if maybe False iaProcessOnly arInputArgs
@@ -121,11 +124,11 @@ createBooks Args { arOutputDir, arMapsDir, arInputArgs } = do
     forYearMonth Nothing = forEachYearMonth
     forYearMonth (Just ym) = forGivenYearMonth ym
 
-    amendHTMLs :: FilePath -> [FilePath] -> IO [MapFilename]
-    amendHTMLs mapsDir posts =
+    amendHTMLs :: (FilePath, FilePath) -> [FilePath] -> IO [MapFilename]
+    amendHTMLs mapsDirs posts =
       let postPairs = adjacentPairs posts
       in fmap join <$> for postPairs $
-        \(file, next) -> withWriteableFile file $ amendHTML mapsDir file next
+        \(file, next) -> withWriteableFile file $ amendHTML mapsDirs file next
 
 type MapFilename = FilePath
 
@@ -285,8 +288,8 @@ withWriteableFile fp f = bracket
 -- === XML processing
 
 -- Fucking A!
-amendHTML :: FilePath -> FilePath -> Maybe FilePath -> IO [MapFilename]
-amendHTML mapsDir file nextFile = run $ load >>> process >>> save
+amendHTML :: (FilePath, FilePath) -> FilePath -> Maybe FilePath -> IO [MapFilename]
+amendHTML (mapsDir, garminMapsDir) file nextFile = run $ load >>> process >>> save
   where
     run a = xioUserState . fst <$> runIOSLA a (initialState []) undefined
     load = readDocument [withParseHTML yes, withWarnings no, withPreserveComment yes] file
@@ -308,6 +311,7 @@ amendHTML mapsDir file nextFile = run $ load >>> process >>> save
       -- `removeLinksToImages` (but it may also work before)
       , removeCommentersProfileLinks
       , useStaticMaps mapsDir
+      , useStaticGarminMaps garminMapsDir
       ]
     save = writeDocument [withOutputXHTML, withAddDefaultDTD yes, withXmlPi no] file
 
@@ -477,6 +481,17 @@ useStaticMaps baseDir = processTopDown $ changeMapLink `when` mapLink
     -- how to do this without `processAttrl`
     saveMapText = perform $ deep getText >>> changeUserState (:)
     mapLink = hasName "a" >>> hasAttrValue "href" ("/map/index" `isInfixOf`)
+
+-- | Replaces all garmin map links (`http://connect.garmin.com/activity/id`)
+-- with the corresponding local pre-rendered maps and collects them in the HXT's
+-- processing state.
+useStaticGarminMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
+useStaticGarminMaps baseDir = processTopDown $ changeMapLink `when` mapLink
+  where
+    changeMapLink = processAttrl $ changeMapText >>> saveMapText
+    changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . dropWhile (not . isDigit)
+    saveMapText = perform $ deep getText >>> changeUserState (:)
+    mapLink = hasName "a" >>> hasAttrValue "href" ("connect.garmin.com/activity/" `isInfixOf`)
 
 
 type Level = Int
