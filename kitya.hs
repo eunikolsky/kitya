@@ -32,9 +32,10 @@ import Text.CSS.Render
 import Text.XML.HXT.Arrow.XmlState.RunIOStateArrow (initialState)
 import Text.XML.HXT.Arrow.XmlState.TypeDefs (xioUserState)
 import Text.XML.HXT.Core
-import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, doesFileExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, removeFile, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Directory (copyFileWithMetadata, createDirectory, doesDirectoryExist, doesFileExist, getModificationTime, getPermissions, listDirectory, makeAbsolute, removeDirectoryRecursive, removeFile, renameDirectory, setModificationTime, setPermissions, withCurrentDirectory, writable)
+import System.Exit (ExitCode(..), die)
 import System.FilePath ((</>), (<.>), dropExtension, splitExtension, takeBaseName)
-import System.Process (readProcess)
+import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode, readProcess)
 import qualified Data.Text as T (pack)
 import qualified Data.Text.Lazy as TL (unpack)
 import qualified Data.Text.Lazy.Builder as TB (toLazyText)
@@ -196,12 +197,13 @@ data EpubSettings = EpubSettings
 
 -- ebook-convert index.html kitya.epub --breadth-first --max-levels 1 --chapter '/' --page-breaks-before '/' --level1-toc '//h:h1' --level2-toc '//h:h2' --authors 'Китя Карлсон' --book-producer egeek --language Russian --pubdate "$( date '+%FT%T%z' )" --series 'Блог Кити Карлсона' --title 'Китя Карлсон, 2004-01' --flow-size 0
 createEpub :: FilePath -> EpubSettings -> IO ()
-createEpub outputDir EpubSettings{..} = readProcess' converter args
+createEpub outputDir EpubSettings{..} = create >> cleanup
   where
+    create = readProcess' converter args
     converter = "ebook-convert"
     args =
       [ "index.html"
-      , outputDir </> "kitya_" <> yearMonth <.> "epub"
+      , output
 
       -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#html-input-options
       , "--breadth-first"
@@ -232,6 +234,15 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
       , "--tags", "blog"
       , "--title", "Китя Карлсон, " <> yearMonth
       ]
+    output = outputDir </> "kitya_" <> yearMonth <.> "epub"
+
+    cleanup = bracket
+      (extractEPUB output <* removeFile output)
+      (\epubDir -> repackEPUB output epubDir *> removeDirectoryRecursive epubDir)
+      cleanupEPUB
+    cleanupEPUB epubDir = do
+      removeIndexFile epubDir
+      modifyContent $ epubDir </> "content.opf"
 
 readProcess' :: FilePath -> [String] -> IO ()
 readProcess' exe args = log >> run
@@ -239,6 +250,65 @@ readProcess' exe args = log >> run
     run = readProcess exe args stdin >>= putStrLn
     stdin = ""
     log = putStrLn . intercalate " " . (["$", exe] <>) . map (\s -> "\"" <> s <> "\"") $ args
+
+-- === EPUB processing
+
+type EPUBFile = FilePath
+
+-- | Extracts the epub file into a directory with the base name of the file, and
+-- returns the created directory.
+extractEPUB :: EPUBFile -> IO FilePath
+extractEPUB file = do
+  let dir = dropExtension file
+  runProc $ proc "unzip" ["-qo", file, "-d", dir]
+
+  pure dir
+
+-- | Creates an epub file from the directory.
+--
+-- Based on `https://ebooks.stackexchange.com/questions/257/how-to-repack-an-epub-file-from-command-line/6171#6171`
+repackEPUB :: EPUBFile -> FilePath -> IO ()
+repackEPUB epub dir = do
+  -- these files must be present in an epub
+  let fileMimetype = "mimetype"
+      fileMetaInf = "META-INF"
+
+  -- we're listing the files before creating an epub in case the new file is in
+  -- the directory (an unsupported case) so that it's not included
+  contents <- filter (\f ->
+      f /= fileMimetype && f /= fileMetaInf
+    ) <$> listDirectory dir
+
+  -- in order to have files directly in the archive (as is required by the format),
+  -- we need to `zip` in that directory, which means the target `epub` file,
+  -- when relative, will point to the wrong place (within the new working dir),
+  -- so we to make the `epub` filepath absolute first
+  -- an alternative would be to change the working directory in the program here,
+  -- but that would make the function not concurrent
+  absEPUB <- makeAbsolute epub
+
+  -- wow! even though `man zip` mentions `--no-extra`:
+  -- `zip error: Invalid command arguments (long option 'no-extra' not supported)`!
+  -- (zip 3.0)
+  runProc $ (proc "zip" ["--quiet", "-0X", absEPUB, fileMimetype]) { cwd = Just dir }
+
+  -- `META-INF/` should be the second file in the archive
+  -- (`--recursive-paths` isn't supported either)
+  runProc $ (proc "zip" $ ["--quiet", "--grow", "-9Xr", absEPUB, fileMetaInf] <> contents) { cwd = Just dir }
+
+-- | Runs the given `CreateProcess` with an empty `stdin`; prints the returned
+-- `stdout` and/or `stderr` if non-empty; expects a successful exit code,
+-- terminating the program otherwise.
+runProc :: CreateProcess -> IO ()
+runProc p = do
+  let cmd = mconcat ["[", show $ cmdspec p, "]"]
+  (exitCode, out, _err) <- readCreateProcessWithExitCode p ""
+
+  unless (null out) $ putStrLn $ mconcat [cmd, " out:\n", out]
+  unless (null _err) $ putStrLn $ mconcat [cmd, " err:\n", _err]
+
+  unless (exitCode == ExitSuccess) $
+    die $ mconcat [cmd, " exit code ", show exitCode, " != 0"]
 
 -- === Month processing
 
@@ -262,6 +332,10 @@ adjacentPairs xs = zip xs (Just <$> tail xs) ++ [(last xs, Nothing)]
 
 getNowString :: IO String
 getNowString = fmap (formatTime defaultTimeLocale "%FT%T%z") . utcToLocalZonedTime =<< getCurrentTime
+
+-- | Removes `index.html` in the given directory.
+removeIndexFile :: FilePath -> IO ()
+removeIndexFile = removeFile . (</> "index.html")
 
 -- === Filesystem exception-safe wrappers
 
@@ -498,6 +572,22 @@ useStaticMaps = _useStaticMaps "/map/index" $ takeBaseName . takeWhile (/= '?')
 -- processing state.
 useStaticGarminMaps :: FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
 useStaticGarminMaps = _useStaticMaps "connect.garmin.com/activity/" $ dropWhile (not . isDigit)
+
+processXML :: IOSLA (XIOState ()) XmlTree XmlTree -> FilePath -> IO ()
+processXML process f = void . runX $
+  readDocument [withValidate no] f
+  >>> process
+  >>> writeDocument [] f
+
+-- | Remove the `index.html` file entry from `content.opf`.
+modifyContent :: FilePath -> IO ()
+modifyContent = processXML removeIndexFileEntry
+
+-- | Removes the `index.html` file from the contents list; it only added an
+-- empty page in the book.
+removeIndexFileEntry :: ArrowXml a => a XmlTree XmlTree
+removeIndexFileEntry =
+  processTopDown (filterA $ neg $ hasName "item" >>> hasAttrValue "href" (== "index.html"))
 
 
 type Level = Int
