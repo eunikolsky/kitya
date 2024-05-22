@@ -42,7 +42,7 @@ import qualified Data.Text.Lazy.Builder as TB (toLazyText)
 import qualified Text.XML.HXT.DOM.XmlNode as XN
 
 version :: Version
-version = makeVersion [4, 0]
+version = makeVersion [4]
 
 main :: IO ()
 main = getProgramArgs >>= createBooks
