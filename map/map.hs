@@ -258,11 +258,12 @@ main = do
       mapFiles <- listGarminMapFiles mapsDir
       forM_ mapFiles $ generateMapFile outDir template <=< readGarminJSON
 
-    ["--gen-garmin-static", mapFile, "--out", outDir] ->
-      generateStaticMapFile outDir =<< readGarminJSON mapFile
+    ["--gen-garmin-static", mapsDir, "--out", outDir] -> do
+      mapFiles <- listGarminMapFiles mapsDir
+      forM_ mapFiles $ generateStaticMapFile outDir <=< readGarminJSON
 
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile|--create-garmin mapsDir|--gen-garmin-static mapFile) --out outDir"]
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile|--create-garmin mapsDir|--gen-garmin-static mapsDir) --out outDir"]
 
     xs -> die $ "can't parse options " <> show xs
