@@ -225,15 +225,16 @@ createEpub outputDir EpubSettings{..} = create >> cleanup
       -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#metadata
       , "--authors", "Китя Карлсон"
       , "--book-producer", "egeek"
-      , "--comments", "v" <> showVersion version
+      , "--comments", ver
       , "--language", "Russian"
       , "--pubdate", nowString
       , "--publisher", "kitya.hs"
       , "--series", "Блог Кити Карлсона"
       , "--series-index", show bookNumber
       , "--tags", "blog"
-      , "--title", "Китя Карлсон, " <> yearMonth
+      , "--title", "Китя Карлсон, " <> yearMonth <> " (" <> ver <> ")"
       ]
+    ver = "v" <> showVersion version
     output = outputDir </> "kitya_" <> yearMonth <.> "epub"
 
     cleanup = bracket
