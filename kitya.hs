@@ -24,6 +24,7 @@ import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.LocalTime (utcToLocalZonedTime)
 import Data.Traversable (for)
+import Data.Version (Version, makeVersion, showVersion)
 import Options.Applicative
 import Prelude hiding (log)
 import Text.CSS.Parse
@@ -38,6 +39,9 @@ import qualified Data.Text as T (pack)
 import qualified Data.Text.Lazy as TL (unpack)
 import qualified Data.Text.Lazy.Builder as TB (toLazyText)
 import qualified Text.XML.HXT.DOM.XmlNode as XN
+
+version :: Version
+version = makeVersion [4, 0]
 
 main :: IO ()
 main = getProgramArgs >>= createBooks
@@ -219,8 +223,10 @@ createEpub outputDir EpubSettings{..} = readProcess' converter args
       -- https://manual.calibre-ebook.com/generated/en/ebook-convert.html#metadata
       , "--authors", "Китя Карлсон"
       , "--book-producer", "egeek"
+      , "--comments", "v" <> showVersion version
       , "--language", "Russian"
       , "--pubdate", nowString
+      , "--publisher", "kitya.hs"
       , "--series", "Блог Кити Карлсона"
       , "--series-index", show bookNumber
       , "--tags", "blog"
