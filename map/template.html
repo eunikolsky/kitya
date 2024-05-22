@@ -51,9 +51,14 @@
 	L.marker(L.latLng(info.start), {icon: start, title:'start', riseOnHover:true}).addTo(map).bindPopup('start');
 	L.marker(L.latLng(info.finish), {icon: finish, title:'finish', riseOnHover:true}).addTo(map).bindPopup('finish');
 
-	const polylines = info.encodedPolylines.map(polyline =>
-		L.Polyline.fromEncoded(polyline, {color:'black', opacity:0.7})
-	);
+  const polylineOpts = {color:'black', opacity:0.7};
+	const polylines = info.encodedPolylines
+    ? info.encodedPolylines.map(polyline =>
+      L.Polyline.fromEncoded(polyline, polylineOpts)
+    )
+    : info.polyline
+    ? [L.polyline(info.polyline, polylineOpts)]
+    : [];
 	polylines.forEach((polyline, idx) => polyline.addTo(map).bindPopup(`path ${idx}`));
 
   const bounds = polylines.map(p => p.getBounds()).reduce((acc, bounds) => acc.extend(bounds));

@@ -9,7 +9,7 @@ import Data.Char (isDigit)
 import Data.List (isInfixOf, isPrefixOf, find, partition, sortOn, stripPrefix)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE (nonEmpty)
-import Data.Maybe (mapMaybe, fromJust)
+import Data.Maybe (mapMaybe, fromJust, fromMaybe)
 import Data.Ord (Down(..))
 import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split, replace)
@@ -17,11 +17,13 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO qualified as T (readFile, writeFile)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
+import Lens.Micro ((^?), (^..))
+import Lens.Micro.Aeson (_Double, _String, key, values)
 import Prelude hiding (map)
 import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
-import System.FilePath ((</>), takeBaseName, takeFileName, takeExtension)
+import System.FilePath ((-<.>), (</>), dropExtension, takeBaseName, takeFileName, takeExtension)
 import Text.Blaze.Html.Renderer.Pretty
 import Text.Blaze.Html5 ((!))
 import Text.Blaze.Html5 qualified as H
@@ -42,14 +44,17 @@ deriving via Generically Coord instance FromJSON Coord
 -- | Information about a Kitya's track on the map.
 data Map = Map
   { filename :: !FilePath
-  -- ^ filename of the mirrored HTML file
+  -- ^ filename of the mirrored HTML file or the basename of garmin's json file
   , sourceMapFilename :: !FilePath
   -- ^ filename of the source text file with map data, extracted from the source
   -- URL, which is recorded by HTTrack
   , title :: !Text
   , start :: !Coord
   , finish :: !Coord
-  , encodedPolylines :: !(NonEmpty Text)
+  -- these two fields should really be one, but I don't want to spend time
+  -- testing the json encoder in that case
+  , encodedPolylines :: !(Maybe (NonEmpty Text))
+  , polyline :: !(Maybe [Coord])
   }
   deriving (Show, Generic)
 
@@ -64,7 +69,7 @@ parseMapInfo f = do
       (start, finish, encodedPolylines) = extractTrack tags
       filename = takeFileName f
       sourceMapFilename = extractSourceMapFilename tags
-  pure Map{filename, sourceMapFilename, title, start, finish, encodedPolylines}
+  pure Map{filename, sourceMapFilename, title, start, finish, encodedPolylines = Just encodedPolylines, polyline = Nothing}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -131,14 +136,14 @@ encode = encodePretty' conf
 
 removeNewlines :: Map -> Map
 removeNewlines map@Map{encodedPolylines} =
-  map { encodedPolylines = removeNewline <$> encodedPolylines }
+  map { encodedPolylines = fmap removeNewline <$> encodedPolylines }
   where removeNewline = T.replace "\n" ""
 
 generateMapFile :: FilePath -> Text -> Map -> IO ()
 generateMapFile outDir template map@Map{title, filename} = do
   let mapJSON = decodeUtf8 . BSL.toStrict . encode $ removeNewlines map
       contents = T.replace "$MAP$" mapJSON . T.replace "$TITLE$" title $ template
-  T.writeFile (outDir </> filename) contents
+  T.writeFile (outDir </> filename -<.> "html") contents
 
 ensureDir :: FilePath -> IO ()
 ensureDir = createDirectoryIfMissing createParents
@@ -195,6 +200,35 @@ generateStaticMapFile outDir Map{title, filename, start, finish} = do
     -- full screen
     pageBreak = H.p ! A.style "page-break-after: always;" $ ""
 
+readGarminJSON :: FilePath -> IO Map
+readGarminJSON file = do
+  summary <- T.readFile file
+  let ensureResult = fromMaybe . error . (<> " in " <> file)
+      title = fromMaybe "<no title>" $ summary ^? key "activityName" . _String
+      filename = takeBaseName file
+
+  details <- T.readFile $ dropExtension file <> "_details.json"
+  let polylineValue = ensureResult "no polyline value" $ details ^? key "geoPolylineDTO"
+      mkCoord p = Coord
+        { lat = ensureResult "no lat" $ p ^? key "lat" . _Double
+        , lng = ensureResult "no lon" $ p ^? key "lon" . _Double
+        }
+      start = mkCoord . ensureResult "no start point" $ polylineValue ^? key "startPoint"
+      finish = mkCoord . ensureResult "no end point" $ polylineValue ^? key "endPoint"
+
+      polyline = mkCoord <$> ensureResult "no polyline" (polylineValue ^? key "polyline") ^.. values
+
+  pure Map{title, start, finish, filename, sourceMapFilename="", encodedPolylines=Nothing, polyline=Just polyline}
+
+listGarminMapFiles :: FilePath -> IO [FilePath]
+listGarminMapFiles dir = fmap (dir </>) . filter isMapFile <$> listDirectory dir
+  where
+    -- <digits>.json
+    isMapFile f = all ($ f)
+      [ all isDigit . takeBaseName
+      , (== ".json") . takeExtension
+      ]
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -216,8 +250,20 @@ main = do
       maps <- either (error . ("can't read mapsFile: " <>)) id <$> eitherDecodeFileStrict @[Map] mapsFile
       forM_ maps $ generateStaticMapFile outDir
 
+    ["--create-garmin", mapsDir, "--out", outDir] -> do
+      template <- T.readFile "template.html"
+      ensureDir outDir
+      copyMapFiles outDir
+
+      mapFiles <- listGarminMapFiles mapsDir
+      forM_ mapFiles $ generateMapFile outDir template <=< readGarminJSON
+
+    ["--gen-garmin-static", mapsDir, "--out", outDir] -> do
+      mapFiles <- listGarminMapFiles mapsDir
+      forM_ mapFiles $ generateStaticMapFile outDir <=< readGarminJSON
+
     ["--help"] -> do
       name <- getProgName
-      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile) --out outDir"]
+      putStrLn $ mconcat [name, " (--extract srcDir|--create mapsFile|--gen-static mapsFile|--create-garmin mapsDir|--gen-garmin-static mapsDir) --out outDir"]
 
     xs -> die $ "can't parse options " <> show xs
