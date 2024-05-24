@@ -1,3 +1,5 @@
+// License: GNU GPL v3.0 (see `../license`)
+
 'use strict';
 
 const puppeteer = require('puppeteer');
