@@ -5,6 +5,8 @@
 -- that `-threaded` works for the concurrent runtime support!
 -- See: https://stackoverflow.com/questions/46311648/multicore-parallelism-with-stack-runghc
 
+-- License: GNU GPL v3.0 (see `license`)
+
 {-# OPTIONS_GHC -Wall #-}
 
 import Control.Concurrent.Async

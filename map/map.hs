@@ -1,3 +1,5 @@
+-- License: GNU GPL v3.0 (see `../license`)
+
 {-# LANGUAGE DeriveGeneric, DerivingVia, ImportQualifiedPost, NamedFieldPuns, OverloadedStrings, StandaloneDeriving, TypeApplications #-}
 
 import Control.Monad ((<=<), forM_)
