@@ -6,6 +6,8 @@
 -- note: the `--package` argument above doesn't work when loading the script into `stack ghci`; pass
 -- them manually, each after its own `--package` argument
 
+-- License: GNU GPL v3.0 (see `license`)
+
 {-# LANGUAGE NamedFieldPuns, OverloadedStrings, RecordWildCards, TypeApplications #-}
 {-# OPTIONS_GHC -Wall -Werror=missing-methods -Werror=missing-fields #-}
 
