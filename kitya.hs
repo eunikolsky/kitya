@@ -108,6 +108,7 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
 
     posts <- listPosts "."
     extraFiles <- amendHTMLs (mapsDir, garminMapsDir) posts
+    verifyFiles extraFiles
     generateIndex $ posts <> extraFiles
 
     if maybe False iaProcessOnly arInputArgs
@@ -136,6 +137,12 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
       let postPairs = adjacentPairs posts
       in fmap (nub . join) <$> for postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML mapsDirs file next
+
+    verifyFiles :: [MapFilename] -> IO ()
+    verifyFiles fs = do
+      missing <- filterM (fmap not . doesFileExist) fs
+      unless (null missing) $
+        die $ "Map files not found: " <> unwords missing
 
 type MapFilename = FilePath
 
