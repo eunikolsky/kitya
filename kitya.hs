@@ -374,7 +374,7 @@ withWriteableFile fp f = bracket
 amendHTML :: (FilePath, FilePath) -> FilePath -> Maybe FilePath -> IO [MapFilename]
 amendHTML (mapsDir, garminMapsDir) file nextFile = run $ load >>> process >>> save
   where
-    run a = xioUserState . fst <$> runIOSLA a (initialState []) undefined
+    run a = reverse . xioUserState . fst <$> runIOSLA a (initialState []) undefined
     load = readDocument [withParseHTML yes, withWarnings no, withPreserveComment yes] file
     process = seqA
       [ movePostHeaderBeforeDate
