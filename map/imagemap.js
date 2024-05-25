@@ -56,9 +56,12 @@ const screenshotMap = async ({ width, height, isGrayscale }) => {
   await browser.close();
 };
 
-// note: using these two commands w/o `await` unintentionally makes the
-// rendering process save two sets of screenshots in parallel!
-
-// PocketBook 740 Color's display b/w resolution, although color resolution is 3× less
-screenshotMap({ width: 1872, height: 1404, isGrayscale: true });
-screenshotMap({ width: 1872 / 3, height: 1404 / 3, isGrayscale: false });
+// note: using these two commands w/o `await` (and the `async` wrapper)
+// unintentionally makes the rendering process save two sets of screenshots in
+// parallel! but some tile rendering may timeout due to the bigger amount of
+// parallel requests, so it's disabled
+(async () => {
+  // PocketBook 740 Color's display b/w resolution, although color resolution is 3× less
+  await screenshotMap({ width: 1872, height: 1404, isGrayscale: true });
+  await screenshotMap({ width: 1872 / 3, height: 1404 / 3, isGrayscale: false });
+})();
