@@ -20,7 +20,7 @@ import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
+import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, nub, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -102,12 +102,13 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
-  bookNumberRef <- newIORef 0
+  bookNumberRef <- newIORef 1
   forYearMonth (iaDate <$> arInputArgs) $ \ym@(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
     posts <- listPosts "."
     extraFiles <- amendHTMLs (mapsDir, garminMapsDir) posts
+    verifyFiles extraFiles
     generateIndex $ posts <> extraFiles
 
     if maybe False iaProcessOnly arInputArgs
@@ -134,8 +135,14 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
     amendHTMLs :: (FilePath, FilePath) -> [FilePath] -> IO [MapFilename]
     amendHTMLs mapsDirs posts =
       let postPairs = adjacentPairs posts
-      in fmap join <$> for postPairs $
+      in fmap (nub . join) <$> for postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML mapsDirs file next
+
+    verifyFiles :: [MapFilename] -> IO ()
+    verifyFiles fs = do
+      missing <- filterM (fmap not . doesFileExist) fs
+      unless (null missing) $
+        die $ "Map files not found: " <> unwords missing
 
 type MapFilename = FilePath
 
@@ -374,7 +381,7 @@ withWriteableFile fp f = bracket
 amendHTML :: (FilePath, FilePath) -> FilePath -> Maybe FilePath -> IO [MapFilename]
 amendHTML (mapsDir, garminMapsDir) file nextFile = run $ load >>> process >>> save
   where
-    run a = xioUserState . fst <$> runIOSLA a (initialState []) undefined
+    run a = reverse . xioUserState . fst <$> runIOSLA a (initialState []) undefined
     load = readDocument [withParseHTML yes, withWarnings no, withPreserveComment yes] file
     process = seqA
       [ movePostHeaderBeforeDate
@@ -556,7 +563,7 @@ type ExtractMapId = String -> String
 _useStaticMaps :: String -> ExtractMapId -> FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
 _useStaticMaps urlMarker extractMapId baseDir = processTopDown $ changeMapLink `when` mapLink
   where
-    changeMapLink = processAttrl $ changeMapText >>> saveMapText
+    changeMapLink = processAttrl $ (changeMapText >>> saveMapText) `when` hasName "href"
     changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . extractMapId
     -- note: this uses `getText`, not `getAttrValue0` because the latter doesn't
     -- work, apparently due to `processAttrl`; however, I couldn't figure out
