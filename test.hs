@@ -1,5 +1,5 @@
 #!/usr/bin/env stack
--- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process,hspec,neat-interpolation --ghc-options=-hide-all-packages
+-- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process,optparse-applicative,hspec,neat-interpolation --ghc-options=-hide-all-packages
 
 {-# LANGUAGE ImportQualifiedPost, QuasiQuotes #-}
 
