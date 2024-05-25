@@ -556,7 +556,7 @@ type ExtractMapId = String -> String
 _useStaticMaps :: String -> ExtractMapId -> FilePath -> IOStateArrow [MapFilename] XmlTree XmlTree
 _useStaticMaps urlMarker extractMapId baseDir = processTopDown $ changeMapLink `when` mapLink
   where
-    changeMapLink = processAttrl $ changeMapText >>> saveMapText
+    changeMapLink = processAttrl $ (changeMapText >>> saveMapText) `when` hasName "href"
     changeMapText = changeAttrValue $ (baseDir </>) . (<> "_static.html") . extractMapId
     -- note: this uses `getText`, not `getAttrValue0` because the latter doesn't
     -- work, apparently due to `processAttrl`; however, I couldn't figure out
