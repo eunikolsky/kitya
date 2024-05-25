@@ -17,10 +17,13 @@ import Data.Text (Text)
 import Data.Text qualified as T (strip, pack, isInfixOf, unpack, split, replace)
 import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO qualified as T (readFile, writeFile)
+import Data.Time (DiffTime, LocalTime, defaultTimeLocale)
+import Data.Time.Clock (secondsToDiffTime)
+import Data.Time.Format (formatTime, parseTimeM)
 import GHC.Generics (Generic, Generically(..))
 import Language.ECMAScript3 (Expression(..), Id(..), JavaScript, PrefixOp(..), Prop(..), SourcePos, Statement(..), VarDecl(..), parse, program, unJavaScript)
 import Lens.Micro ((^?), (^..))
-import Lens.Micro.Aeson (_Double, _String, key, values)
+import Lens.Micro.Aeson (_Double, _Integer, _String, key, values)
 import Prelude hiding (map)
 import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
@@ -32,6 +35,7 @@ import Text.Blaze.Html5 qualified as H
 import Text.Blaze.Html5.Attributes qualified as A
 import Text.HTML.TagSoup (Tag(..), innerText, parseTags)
 import Text.HTML.TagSoup.Match (tagComment)
+import Text.Printf (printf)
 import Text.Read (readMaybe)
 
 -- | WGS84 geographic coordinate.
@@ -42,6 +46,43 @@ data Coord = Coord { lat :: !Double, lng :: !Double }
 
 deriving via Generically Coord instance ToJSON Coord
 deriving via Generically Coord instance FromJSON Coord
+
+newtype Distance = Distance { getDistanceMeters :: Double }
+  deriving (Generic)
+
+deriving via Generically Distance instance ToJSON Distance
+deriving via Generically Distance instance FromJSON Distance
+
+newtype Speed = Speed { getSpeedMetersPerSecond :: Double }
+  deriving (Generic)
+
+deriving via Generically Speed instance ToJSON Speed
+deriving via Generically Speed instance FromJSON Speed
+
+data Elevation = Elevation
+  { elRange :: !(Distance, Distance)
+  , elTotalAscent :: !Distance
+  , elTotalDescent :: !Distance
+  }
+  deriving (Generic)
+
+deriving via Generically Elevation instance ToJSON Elevation
+deriving via Generically Elevation instance FromJSON Elevation
+
+data ExtendedMap = ExtendedMap
+  { emStartTime :: !LocalTime
+  , emTimezone :: !Text
+  , emDistance :: !Distance
+  , emDuration :: !DiffTime
+  , emElevation :: !Elevation
+  , emAvgSpeed :: !Speed
+  , emAvgMovingSpeed :: !Speed
+  , emMaxSpeed :: !Speed
+  }
+  deriving (Generic)
+
+deriving via Generically ExtendedMap instance ToJSON ExtendedMap
+deriving via Generically ExtendedMap instance FromJSON ExtendedMap
 
 -- | Information about a Kitya's track on the map.
 data Map = Map
@@ -57,8 +98,9 @@ data Map = Map
   -- testing the json encoder in that case
   , encodedPolylines :: !(Maybe (NonEmpty Text))
   , polyline :: !(Maybe [Coord])
+  , extendedMap :: !(Maybe ExtendedMap)
   }
-  deriving (Show, Generic)
+  deriving (Generic)
 
 deriving via Generically Map instance ToJSON Map
 deriving via Generically Map instance FromJSON Map
@@ -71,7 +113,7 @@ parseMapInfo f = do
       (start, finish, encodedPolylines) = extractTrack tags
       filename = takeFileName f
       sourceMapFilename = extractSourceMapFilename tags
-  pure Map{filename, sourceMapFilename, title, start, finish, encodedPolylines = Just encodedPolylines, polyline = Nothing}
+  pure Map{filename, sourceMapFilename, title, start, finish, encodedPolylines = Just encodedPolylines, polyline = Nothing, extendedMap = Nothing}
 
 getJSText :: [Tag Text] -> Text
 getJSText = innerText . take 2 . dropWhile (/= TagOpen "script" [("type", "text/javascript")])
@@ -158,7 +200,7 @@ copyMapFiles outDir = do
   forM_ files $ \f -> copyFile (from </> f) (outDir </> f)
 
 generateStaticMapFile :: FilePath -> Map -> IO ()
-generateStaticMapFile outDir Map{title, filename, start, finish} = do
+generateStaticMapFile outDir Map{title, filename, start, finish, extendedMap} = do
   let basename = takeBaseName filename
   mapImages <- filterMapImages basename <$> listDirectory outDir
   writeFile (outDir </> basename <> "_static.html") . renderHtml . staticHTML basename $ categorize mapImages
@@ -176,8 +218,9 @@ generateStaticMapFile outDir Map{title, filename, start, finish} = do
       H.body $ do
         H.h1 $ H.toHtml title'
 
-        showCoord "Start" start
-        showCoord "Finish" finish
+        showCoord "Старт" start
+        showCoord "Финиш" finish
+        forM_ extendedMap showExtendedMap
         pageBreak
 
         images $ sortByZoomLevel basename grayscaleImgs
@@ -197,6 +240,54 @@ generateStaticMapFile outDir Map{title, filename, start, finish} = do
       H.toHtml $ name <> ": "
       H.code . H.toHtml $ mconcat [show $ lat c, ", ", show $ lng c]
 
+    showExtendedMap ExtendedMap{emStartTime, emTimezone, emDistance, emDuration, emElevation, emAvgSpeed, emAvgMovingSpeed, emMaxSpeed} = do
+      H.p $ do
+        "Время начала: "
+        H.code $ do
+          H.toHtml $ formatTime defaultTimeLocale "%F %T" emStartTime
+          " "
+          H.toHtml emTimezone
+
+      H.p $ do
+        "Расстояние: "
+        H.toHtml $ showDistanceKm emDistance
+
+      H.p $ do
+        "Продолжительность: "
+        H.code . H.toHtml $ formatTime defaultTimeLocale "%h:%M:%S" emDuration
+
+      H.p $ do
+        "Скорость: средняя "
+        H.toHtml $ showSpeed emAvgSpeed
+        ", средняя в движении "
+        H.toHtml $ showSpeed emAvgMovingSpeed
+        ", максимальная "
+        H.toHtml $ showSpeed emMaxSpeed
+
+      showElevation emElevation
+
+    showDistanceKm :: Distance -> H.Html
+    showDistanceKm = H.code . H.toHtml @String . printf "%0.2f км" . mToKm . getDistanceMeters
+      where mToKm = (/ 1000)
+
+    showSpeed :: Speed -> H.Html
+    showSpeed = H.code . H.toHtml @String . printf "%0.2f км/ч" . msToKmh . getSpeedMetersPerSecond
+      where msToKmh = (* 3.6)
+
+    showElevation :: Elevation -> H.Html
+    showElevation Elevation{elRange, elTotalAscent, elTotalDescent} = H.p $ do
+        "Высота: диапазон "
+        H.toHtml . showDistanceM $ fst elRange
+        " … "
+        H.toHtml . showDistanceM $ snd elRange
+        ", общий подъём "
+        H.toHtml . showDistanceM $ elTotalAscent
+        ", общий спуск "
+        H.toHtml . showDistanceM $ elTotalDescent
+
+    showDistanceM :: Distance -> H.Html
+    showDistanceM = H.code . H.toHtml @String . printf "%0.2f м" . getDistanceMeters
+
     -- this is needed so that koreader doesn't try to display the image on the
     -- first page since it will be cut off, and the images are designed to fit
     -- full screen
@@ -209,6 +300,29 @@ readGarminJSON file = do
       title = fromMaybe "<no title>" $ summary ^? key "activityName" . _String
       filename = takeBaseName file
 
+      summaryValue = ensureResult "no summary value" $ summary ^? key "summaryDTO"
+      acceptWhitespace = False
+  startTime <- parseTimeM acceptWhitespace defaultTimeLocale "%FT%T.0" . T.unpack
+    $ ensureResult "no start time" $ summaryValue ^? key "startTimeLocal" . _String
+
+  let emTimezone = ensureResult "no timezone" $ summary ^? key "timeZoneUnitDTO" . key "timeZone" . _String
+      emDistance = Distance . ensureResult "no distance" $ summaryValue ^? key "distance" . _Double
+      emDuration = secondsToDiffTime . ensureResult "no distance" $ summaryValue ^? key "distance" . _Integer
+
+      elRange =
+        ( Distance . ensureResult "no min elevation" $ summaryValue ^? key "minElevation" . _Double
+        , Distance . ensureResult "no max elevation" $ summaryValue ^? key "maxElevation" . _Double
+        )
+      elTotalAscent = Distance . ensureResult "no total ascent" $ summaryValue ^? key "elevationGain" . _Double
+      elTotalDescent = Distance . ensureResult "no total descent" $ summaryValue ^? key "elevationLoss" . _Double
+      emElevation = Elevation{elRange, elTotalAscent, elTotalDescent}
+
+      emAvgSpeed = Speed . ensureResult "no avg speed" $ summaryValue ^? key "averageSpeed" . _Double
+      emAvgMovingSpeed = Speed . ensureResult "no avg moving speed" $ summaryValue ^? key "averageMovingSpeed" . _Double
+      emMaxSpeed = Speed . ensureResult "no max speed" $ summaryValue ^? key "maxSpeed" . _Double
+
+      exMap = ExtendedMap{emStartTime=startTime, emTimezone, emDistance, emDuration, emElevation, emAvgSpeed, emAvgMovingSpeed, emMaxSpeed}
+
   details <- T.readFile $ dropExtension file <> "_details.json"
   let polylineValue = ensureResult "no polyline value" $ details ^? key "geoPolylineDTO"
       mkCoord p = Coord
@@ -220,7 +334,7 @@ readGarminJSON file = do
 
       polyline = mkCoord <$> ensureResult "no polyline" (polylineValue ^? key "polyline") ^.. values
 
-  pure Map{title, start, finish, filename, sourceMapFilename="", encodedPolylines=Nothing, polyline=Just polyline}
+  pure Map{title, start, finish, filename, sourceMapFilename="", encodedPolylines=Nothing, polyline=Just polyline, extendedMap=Just exMap}
 
 listGarminMapFiles :: FilePath -> IO [FilePath]
 listGarminMapFiles dir = fmap (dir </>) . filter isMapFile <$> listDirectory dir
