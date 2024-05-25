@@ -102,7 +102,7 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
   -- provide an `instance MonadUnliftIO (StateT s m)`; thus I resorted to using
   -- plain IO and mutable references in IO — this is fine in this small script,
   -- but does suck in general
-  bookNumberRef <- newIORef 0
+  bookNumberRef <- newIORef 1
   forYearMonth (iaDate <$> arInputArgs) $ \ym@(year, month) -> do
     putStrLn $ mconcat ["Processing ", year, "/", month, "…"]
 
