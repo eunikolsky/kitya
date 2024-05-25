@@ -1,6 +1,8 @@
 #!/usr/bin/env stack
 -- stack script --resolver lts-19.31 --package base,hxt,split,directory,filepath,text,css-text,time,process,optparse-applicative,hspec,neat-interpolation --ghc-options=-hide-all-packages
 
+-- License: GNU GPL v3.0 (see `license`)
+
 {-# LANGUAGE ImportQualifiedPost, QuasiQuotes #-}
 
 module Test where
