@@ -20,7 +20,7 @@ import Data.Char (isDigit)
 import Data.Either (fromRight)
 import Data.Foldable (traverse_)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, singleton, sortOn, uncons)
+import Data.List (intercalate, intersperse, isInfixOf, isPrefixOf, nub, singleton, sortOn, uncons)
 import Data.List.Split (dropFinalBlank, dropInitBlank, dropInnerBlanks, keepDelimsL, split, whenElt)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -134,7 +134,7 @@ createBooks Args { arOutputDir, arMapsDir, arGarminMapsDir, arInputArgs } = do
     amendHTMLs :: (FilePath, FilePath) -> [FilePath] -> IO [MapFilename]
     amendHTMLs mapsDirs posts =
       let postPairs = adjacentPairs posts
-      in fmap join <$> for postPairs $
+      in fmap (nub . join) <$> for postPairs $
         \(file, next) -> withWriteableFile file $ amendHTML mapsDirs file next
 
 type MapFilename = FilePath
