@@ -29,7 +29,7 @@ import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
 import System.FilePath ((-<.>), (</>), dropExtension, takeBaseName, takeFileName, takeExtension)
-import Text.Blaze.Html.Renderer.Pretty
+import Text.Blaze.Html.Renderer.Utf8
 import Text.Blaze.Html5 ((!))
 import Text.Blaze.Html5 qualified as H
 import Text.Blaze.Html5.Attributes qualified as A
@@ -203,7 +203,7 @@ generateStaticMapFile :: FilePath -> Map -> IO ()
 generateStaticMapFile outDir Map{title, filename, start, finish, extendedMap} = do
   let basename = takeBaseName filename
   mapImages <- filterMapImages basename <$> listDirectory outDir
-  writeFile (outDir </> basename <> "_static.html") . renderHtml . staticHTML basename $ categorize mapImages
+  BSL.writeFile (outDir </> basename <> "_static.html") . renderHtml . staticHTML basename $ categorize mapImages
 
   where
     filterMapImages basename = filter (\f -> all ($ f) [(basename `isPrefixOf`), (== ".png") . takeExtension])
