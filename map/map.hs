@@ -254,7 +254,7 @@ generateStaticMapFile outDir Map{title, filename, start, finish, extendedMap} = 
 
       H.p $ do
         "Продолжительность: "
-        H.code . H.toHtml $ formatTime defaultTimeLocale "%h:%M:%S" emDuration
+        H.code . H.toHtml $ formatTime defaultTimeLocale "%h:%0M:%0S" emDuration
 
       H.p $ do
         "Скорость: средняя "
