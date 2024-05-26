@@ -1,0 +1,164 @@
+= `kitya` readme
+
+This repository contains a few scripts that create https://en.wikipedia.org/wiki/EPUB[``epub``s] out of https://kitya.livejournal.com/[Kitya Karlson's blog (in Russian)].
+
+Этот репозиторий содержит несколько скриптов для создания https://en.wikipedia.org/wiki/EPUB[`epub` книг] из https://kitya.livejournal.com/[блога Кити Карлсона].
+
+License: link:license[GPL v3.0].
+
+== What problem does it solve?
+
+Kitya Karlson wrote a great blog in LiveJournal (in Russian) between 2003 and 2015 about living in different countries, with an excellent writing style and amazing nature photos from Australia, Canada, the USA. The blog has hundreds of posts, and reading all that from a LCD screen is no good for the eyes. It's much better to use an e-ink-based reader, for example https://pocketbook.ch/en-ch/catalog/e-readers-and-e-notes/pocketbook-inkpad-color-2-ch[PocketBook InkPad Color 2] is pretty good and has a basic color screen for photos (although with a lower grayscale contrast). https://github.com/koreader/koreader[KOReader] makes the reading even better. Kitya has done a great job storing his LJ posts (with photos and comments!) on his own website, in a much lighter and more usable form at http://lj2.karlson.ru/lj/, so I mirrored it and was able to create epubs and tweak them for the e-reader.
+
+Китя Карлсон писал классный блог в ЖЖ между 2003 и 2015 про жизнь в разных странах, с отличным стилем повествования и обалденными фотографиями природы Австралии, Канады, США. Блог содержит сотни записей и чтение столько всего с ЖК экрана плохо для глаз. Гораздо лучше использовать читалку с экраном на электронных чернилах, например, https://pocketbook.com.ua/uk-ua/catalog/color-screen-ua/pocketbook-inkpad-color-2-ua[PocketBook InkPad Color 2] — довольно хорошее устройство с базовым цветным экраном для фотографий (хотя и с меньшим контрастом). https://github.com/koreader/koreader[KOReader] делает чтение ещё лучше. Китя позаботился о сохранении своих ЖЖ записей (с фотографиями и комментариями!) на своём сайте, в значительно более лёгком виде на http://lj2.karlson.ru/lj/, так что я скачал зеркало сайта и смог создать электронные книги, которые хорошо выглядят на читалке.
+
+== Generating epubs
+
+Note: you may try following the steps to generate your own books. The commands aren't automated because I figured them out as I went and there is really no need to rerun them often since the blog doesn't change anymore. This is an involved process that requires installing multiple different programs. I did this on macos, but most of the commands should work on Linux too (not tested).
+
+I don't publish any of the downloaded files, generated maps or EPUBs in the repository because I haven't asked for author's permission.
+
+=== Downloading the blog
+
+Since the website is mostly HTML and images, it's easy to download. However, it took a while to figure out how to do that in the best way. ``wget``'s crawler was quite limited, so I used https://www.httrack.com/html/index.html[`HTTrack`] instead. This is the command that I came up with after many tries:
+
+[source,bash]
+----
+$ httrack http://lj2.karlson.ru/lj/ '-*' '+*.karlson.ru/*' '-*www.karlson.ru/*' '-*2037*' '-*journals*' '-*.cgi*' '-*.pdf' '-*.mp3' '-*.qt' '-*.swf' '-*.avi' '-*.mp4' '-*.zip' -O kitya -a -n -j0 -I0 -X0 -v -z
+----
+
+It can be killed and restarted without any issues. If you want the mac not to go to sleep while downloading, you can run `caffeinate -w "$( pgrep httrack )"` when necessary.
+
+The download took a few months (about several hours every day) for me. The local mirror is `11.4 GiB`.
+
+For the purposes of this document, I assume that the command above was run in the home directory, and thus the mirror is in `~/kitya/`.
+
+=== Generating the maps
+
+The first two versions of the script didn't deal with maps at all. This version adds them to the books.
+
+There are two kinds of maps in the blog: (33) local maps in separate HTML files and (55) links to tracks on garmin.com. Maps are important for me, so I decided to embed them into the books. However regular web-based maps (e.g. based on https://leafletjs.com/[Leaflet js]) don't work in EPUBs, at least not in `KOReader`. The solution is to embed pre-rendered map images instead. I use https://github.com/puppeteer/puppeteer[Puppeteer] to be able to screenshot a web page automatically, in a headless browser. Beware that it uses "chrome for testing" by default, which does try to contact goog even in this version (blocked those attempts in Little Snitch); unfortunately, I couldn't make the script work with firefox nightly (https://pptr.dev/api/puppeteer.puppeteerlifecycleevent/[`networkidle0`] doesn't work there).
+
+==== Setup a local tile server
+
+The generated leaflet js-based maps use https://www.openstreetmap.org/[OpenStreetMap] for the map data. Quickly rendering 88 maps on multiple different zoom levels with the standard OSM tiles isn't a good idea, according to the https://operations.osmfoundation.org/policies/tiles/[Tile Usage Policy].
+
+But OSM is https://www.openstreetmap.org/copyright[open data], so I set up my own tile rendering server in docker with the help of https://github.com/Overv/openstreetmap-tile-server.
+
+Download the extracts from https://download.geofabrik.de/[Geofabrik] for the regions where the tracks are present and merge them into one file:
+
+[source,bash]
+----
+$ curl --rate 3/m --remote-time --remote-name-all https://download.geofabrik.de/{north-america/{us/{washington,oregon,hawaii},canada/british-columbia},australia-oceania/australia}-latest.osm.pbf
+$ osmium merge *.osm.pbf(On) -o merged.osm.pbf
+----
+
+Note: the https://man.archlinux.org/man/zshexpn.1.en#o~2[`(On)`] globbing syntax is for `zsh` and won't work in `bash`, so you can skip it there.
+
+(I manually created a map with the start and end points of all the tracks to check which regions to download; I used commands like `+jq -rc '(.geoPolylineDTO.startPoint | {lat,lng:.lon}, ,), (.geoPolylineDTO.endPoint | {lat,lng:.lon}, ,)' *_details.json > points+` with the garmin data (steps to download below).)
+
+Import OSM data into the database (this will take several hours):
+
+[source,bash]
+----
+$ echo osm-{data,tiles} | xargs -n1 docker volume create
+$ docker run -p 8080:80 -v ./merged.osm.pbf:/data/region.osm.pbf -v osm-data:/data/database/ -v osm-tiles:/data/tiles/ overv/openstreetmap-tile-server import
+----
+
+Run the server:
+[source,bash]
+----
+$ docker run -p 8080:80 -v osm-data:/data/database/ -v osm-tiles:/data/tiles/ -d overv/openstreetmap-tile-server run
+----
+
+==== Generate and render local maps
+
+In the `map/` directory of the project:
+
+[source,bash]
+----
+$ stack run -- --extract $HOME/kitya/lj.karlson.ru/map --out out
+$ stack run -- --create out/maps.json --out out
+$ npm install
+$ ( cd out && for f in index????.html; do echo $f; node ../imagemap.js $f; done )
+$ stack run -- --gen-static out/maps.json --out out
+----
+
+Note: after the fourth command, some of the rendered maps contained gaps from missing tiles; a timeout somewhere may be too low, rerunning the command fixed that.
+
+==== Download tracks, generate and render garmin maps
+
+You need to get an auth token to download tracks from garmin. Suggested path: open a new tab in firefox, open the developer tools (`Cmd+Option+I`), click the Network tab, go to any of the kitya's tracks (`+https://connect.garmin.com/activity/<digits>+` links), you'll see a garmin page. Filter the URLs by `/details` in the dev tools window, there should be one result `+https://connect.garmin.com/activity-service/activity/…+`, click on it, scroll down on the Headers tab, find the `Authorization:` Request header, right-click and "Copy Value". It's a long string that should look like `Bearer eyJhbG…`. Paste it into `map/garmin/dl.sh` as the `auth` value, replacing `<paste auth here>`.
+
+In the `map/` directory of the project:
+
+[source,bash]
+----
+$ rg -INo --pcre2 '(?<=connect.garmin.com/activity/)\d+' ~/kitya/lj2.karlson.ru/lj | sort -un > garmin/ids
+$ ( cd garmin && ./dl.sh )
+$ stack run -- --create-garmin garmin --out garmin
+$ ( cd garmin && for f in *.html; do echo $f; node ../imagemap.js $f; done )
+$ stack run -- --gen-garmin-static garmin --out garmin
+----
+
+https://docs.haskellstack.org/en/stable/[`stack`] is needed to compile and run the Haskell program link:map/map.hs[`map/map.hs`]. Can be installed with `brew install haskell-stack`.
+
+=== Generating EPUBs
+
+Run the command in the `~/kitya/lj2.karlson.ru/lj/` directory of your blog mirror (replace `~/dev/kitya/` with the cloned repo's root):
+
+[source,bash]
+----
+$ noti caffeinate time ~/dev/kitya/kitya.hs --maps-dir ~/dev/kitya/map/out --garmin-maps-dir ~/dev/kitya/map/garmin ~/kitya_epub
+----
+
+Or you can build an executable with `make build` and then run `kitya` instead of `kitya.hs`.
+
+Note: `noti caffeinate time` is not necessary. These program add extra features: `noti` displays a notification when done, `caffeinate` blocks macos' sleep and `time` outputs the execution time.
+
+This uses Calibre's https://manual.calibre-ebook.com/generated/en/ebook-convert.html[`ebook-convert`] to generate epubs from HTMLs.
+
+It took about 35 minutes to generate all the epubs. The result is `9.39 GiB` of fun read.
+
+== Bonus for KOReader
+
+I ended up with these https://github.com/koreader/koreader/wiki/Profiles[profile] settings in KOReader for better reading:
+
+[source,lua]
+----
+    ["kitya5"] = {
+        ["b_page_margin"] = 0,
+        ["block_rendering_mode"] = 2,
+        ["embedded_css"] = true,
+        ["embedded_fonts"] = true,
+        ["font_base_weight"] = 0.5,
+        ["font_gamma"] = 15,
+        ["font_hinting"] = 2,
+        ["font_kerning"] = 3,
+        ["font_size"] = 20.5,
+        ["h_page_margins"] = {
+            [1] = 0,
+            [2] = 0,
+        },
+        ["line_spacing"] = 85,
+        ["render_dpi"] = 167,
+        ["rotation_mode"] = 3,
+        ["set_font"] = "Noto Serif",
+        ["settings"] = {
+            ["name"] = "kitya5",
+            ["registered"] = true,
+        },
+        ["smooth_scaling"] = false,
+        ["sync_t_b_page_margins"] = true,
+        ["t_page_margin"] = 0,
+        ["view_mode"] = "page",
+        ["visible_pages"] = 1,
+        ["word_expansion"] = 0,
+        ["word_spacing"] = {
+            [1] = 95,
+            [2] = 75,
+        },
+    },
+----
+
+I think this can be added to `/applications/koreader/settings/profiles.lua` on the e-reader and then the profile can be activated in the KOReader GUI.

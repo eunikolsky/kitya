@@ -1,0 +1,4 @@
+node_modules/
+out/
+garmin/*
+!garmin/dl.sh

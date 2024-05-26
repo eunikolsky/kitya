@@ -1,0 +1,10 @@
+cabal-version: 3.8
+name: map
+version: 0.1.0
+build-type: Simple
+license: GPL-3.0-or-later
+
+executable map
+  main-is: map.hs
+  build-depends: aeson, aeson-pretty, base, blaze-html, bytestring, directory, filepath, language-ecmascript, microlens, microlens-aeson, tagsoup, text, time
+  ghc-options: -Wall -Werror=missing-methods -Werror=missing-fields -Wprepositive-qualified-module

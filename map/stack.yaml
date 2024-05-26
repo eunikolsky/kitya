@@ -1,0 +1,14 @@
+resolver: lts-22.18
+packages:
+- .
+extra-deps:
+# have to use the latest, unreleased version of `language-ecmascript` because it
+# compiles with the current libraries versions, whereas the released one doesn't
+# and `language-javascript` fails to parse multiline strings
+# the `stack.yaml` is required due to this dependency, so `map.hs` is not a
+# simple `stack script` anymore
+- git: https://github.com/jswebtools/language-ecmascript.git
+  commit: 'a1e47e69e68f6f70f8eca40d28dd8b702262a123'
+# * ansi-wl-pprint must match >=0.6 && <1, but ansi-wl-pprint-1.0.2 is in the Stack configuration
+#            (latest matching version is 0.6.9).
+- ansi-wl-pprint-0.6.9@sha256:fb737bc96e2aef34ad595d54ced7a73f648c521ebcb00fe0679aff45ccd49212,2448
